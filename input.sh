@@ -25,13 +25,19 @@ input_with_placeholder() {
         case "$key" in
             $'\x0D'|$'\x0A'|$'\x00') # Enter key (Carriage Return or Line Feed)
                 line_clear
-                echo "$input"
+                printf "$input"
                 break
+                ;;
+            $'\b') # Ctrl-Backspace (\b) - Delete last word
+                input="${input% *}"
+                # Clear line and reprint prompt and current input
+                line_clear
+                printf "$prompt$input"
                 ;;
             $'\x7F') # Backspace key
                 if [ -n "$input" ]; then
                     input="${input::-1}"
-                    echo -en "\b \b"
+                    printf "\b \b"
                 fi                
                 if [ -z "$input" ]; then
                     # If all input has been deleted, show the placeholder again
