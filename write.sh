@@ -1,7 +1,4 @@
-#!/bin/bash
-
-# Source the utility script for terminal UI manipulation functions
-. ./_util.sh
+#!/usr/bin/env bash
 
 input_with_placeholder() {
     local prefix="┃ "
