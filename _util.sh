@@ -1,4 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
+LPWD="$PWD/$(dirname ${BASH_SOURCE[0]})"
+
 # Guide: https://github.com/dylanaraps/writing-a-tui-in-bash
 # This script provides various utilities for terminal UI manipulation in Bash.
 
