@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-LPWD="$PWD/$(dirname ${BASH_SOURCE[0]})"
-
-# Assuming necessary utilities and functions are sourced
-# . ./_util.sh
 
 box() {
 
