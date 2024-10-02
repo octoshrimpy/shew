@@ -7,7 +7,8 @@ LPWD="$PWD/$(dirname ${BASH_SOURCE[0]})"
 # Cursor Management
 # These functions control the cursor's visibility, position, and movement within the terminal.
 
-. ./_colors.sh
+. "$LPWD/_colors.sh"
+. "$LPWD/box.sh"
 
 # Hide the cursor
 # Usage: cursor_hide
