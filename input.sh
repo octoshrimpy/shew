@@ -1,7 +1,4 @@
-#!/bin/bash
-
-# Assuming necessary utilities and functions are sourced
-. ./_util.sh
+#!/usr/bin/env bash
 
 input_with_placeholder() {
     local prompt="> "
