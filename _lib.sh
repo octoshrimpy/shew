@@ -4,224 +4,238 @@ set -e
 
 # TODO: if ran directly, exit with warning
 
+
+# _dryrun: Run command, or print it if debug is on.
+# use: _dryrun rm file.txt
 debug=false
-# skip command if debug but tell user
-function _dryrun() {
-  if ! $debug; then
-  "$@"
+_dryrun() {
+  if [ "$debug" != true ]; then
+    "$@"
   else
-    _prt "Skipping: ${C_GRAY}${C_ITALIC}$(echo "$@")"
+    _prt "Skipping: ${C_GRAY}${C_ITALIC}$*${C_NC}"
   fi
 }
 
+# _debug: Run command with rundebug=true if debug is on.
+# use: _debug my_func
 rundebug=false
-# toggle want-once debug features
-function _debug() {
-  if $debug; then
+_debug() {
+  if [ "$debug" = true ]; then
     rundebug=true
     "$@"
     rundebug=false
   fi
 }
 
-# prettify JSON strings
-function _prettyjson() {
-  echo "$*" \
+# _prettyjson: Format JSON with jq or a fallback if jq is missing.
+# use: echo '{"x":1}' | _prettyjson
+_prettyjson() {
+  local json_input
+
+  # Read from argument(s) or stdin
+  if [ $# -gt 0 ]; then
+    json_input="$*"
+  else
+    json_input=$(cat)
+  fi
+
+  # Try using jq if available
+  if command -v jq >/dev/null 2>&1; then
+    echo "$json_input" | jq .
+    return
+  fi
+
+  # Fallback: minimal formatter using grep + awk
+  echo "$json_input" \
   | grep -Eo '"[^"]*" *(: *([0-9]*|"[^"]*")[^{}\["]*|,)?|[^"\]\[\}\{]*|\{|\},?|\[|\],?|[0-9 ]*,?' \
   | awk '{if ($0 ~ /^[}\]]/ ) offset-=4; printf "%*c%s\n", offset, " ", $0; if ($0 ~ /^[{\[]/) offset+=4}'
 }
 
-# nice print with debug features
-function _prt() {
-  
-  local appname=${setappname:-"PDBAPI"}
-
-  local brcolor=${C_CYAN}
-  local txcolor=${C_GRAY}
-  local prefix_default=
-
-  local appname_spaces=${#appname}
-  local prefix_space=
-  prefix_space="     $(printf "%${appname_spaces}s")"
- 
-  local prefix=
-  local input=
+# _prt: Print message with prefix, colors, and multiline support.
+# flags: -w warning, -e error, -s replace prefix with spaces
+# use: _prt -w "Check your input"
+_prt() {
+  local appname="${setappname:-PDBAPI}"
+  local brcolor="$C_CYAN"
+  local txcolor="$C_GRAY"
+  local prefix=""
+  local input=""
   local silent=false
 
-  # warn
-  if [ "$1" = "-w" ]; then
-    txcolor=${C_BOLD}${C_YELLOW}
-    prefix="${C_YELLOW}${C_BOLD}Warn${C_NC}: "
-    shift
-  fi
-
-  # error
-  if [ "$1" = "-e" ]; then
-    txcolor=${C_BOLD}${C_RED}
-    prefix="${C_RED}${C_BOLD}Error${C_NC}: "
-    shift  
-  fi
-  
-  # silent mode
-  if [ "$1" = "-s" ]; then
-    silent=true
-    shift  
-  fi
-
-  if $rundebug; then 
-    brcolor=${C_BOLD_RED}
-    txcolor=${C_REVERSE}${C_BOLD_RED}
-  fi
-
-  prefix_default="${brcolor}[ ${txcolor}$appname${C_NC} ${brcolor}] ${C_NC}$prefix${C_NC}"
-
-  # Check if there are arguments
-  if [ "$#" -gt 0 ]; then
-      input="$*"
-  else
-      # Read from stdin
-      while IFS= read -r line; do
-          input+="$line\n"
-      done
-  fi
-
-
-  local lnc=0
-  IFS=$'\n'
-  for line in $input;
-  do
-    if [ "$silent" == true ] || [ "$lnc" -gt 0 ]; then
-      printf "%b\n" "$prefix_space$line${C_NC}"
-    else
-      printf "%b\n" "$prefix_default$line${C_NC}"
-    fi
-    ((lnc+=1))
+  # POSIX-compatible flag parsing: checks if $1 starts with a dash (-)
+  # instead of using [[ "$1" =~ ^- ]], which is Bash-only.
+  # TODO: make case in more readable
+  while [ "${1#-}" != "$1" ]; do
+    case "$1" in
+      -w) txcolor="${C_BOLD}${C_YELLOW}"; prefix="${C_YELLOW}${C_BOLD}Warn${C_NC}: "; shift ;;
+      -e) txcolor="${C_BOLD}${C_RED}"; prefix="${C_RED}${C_BOLD}Error${C_NC}: "; shift ;;
+      -s) silent=true; shift ;;
+      *) break ;;
+    esac
   done
 
-  return 
+  # If we're in debug mode, adjust styling for visibility
+  if [ "$rundebug" = true ]; then
+    brcolor="$C_BOLD_RED"
+    txcolor="${C_REVERSE}${C_BOLD_RED}"
+  fi
+
+  # Format the prefix: [ appname ] prefix: message
+  local prefix_default="${brcolor}[ ${txcolor}${appname}${C_NC} ${brcolor}] ${C_NC}${prefix}"
+
+  # Prefix space padding: convert appname to an equal-length string of spaces
+  # so multiline messages align with the appname block.
+  local appname_spaces=""
+  # shellcheck disable=SC2034
+  for _ in $(printf "%s" "$appname" | fold -w1); do
+    appname_spaces="${appname_spaces} "
+  done
+  local prefix_space="     ${appname_spaces}"  # 5-space left margin + appname space
+
+  # Input may be passed as arguments, or piped via stdin
+  if [ "$#" -gt 0 ]; then
+    input="$*"
+  else
+    while IFS= read -r line; do
+      input="${input}${line}"$'\n'
+    done
+  fi
+
+  # POSIX-safe line-by-line iteration over input
+  # Note: quoting is critical here. $input may include embedded newlines.
+  # This uses printf piped into read loop to preserve formatting.
+  local lnc=0
+  printf "%s" "$input" | while IFS= read -r line; do
+    if [ "$silent" = true ] || [ "$lnc" -gt 0 ]; then
+      printf "%b\n" "${prefix_space}${line}${C_NC}"
+    else
+      printf "%b\n" "${prefix_default}${line}${C_NC}"
+    fi
+    lnc=$((lnc + 1))
+  done
 }
 
-# _prt but directly to TTY, can print from within functions
+# _prtty: Same as _prt but always writes to terminal.
+# use: _prtty -e "Critical failure"
 function _prtty() {
   _prt "$@" > /dev/tty
 }
 
-# fake gum spins the given function and persists its variables
-#  _spin --show-output yourfunc
-# _spin --spinner globe --title "Locating" find_carmen
-function _spin() {
-    command echo -ne "\e[?25l"  # Hide cursor
-    set +m # hide job control
+# _spin: Animate a spinner while running a command.
+# flags: --title str, --spinner type, --show-output
+# use: _spin --spinner dots --title "Waiting" do_thing
+_spin() {
+  printf "\033[?25l"  # hide cursor
+  set +m              # disable job control
 
-    local gum_args=()
-    local func=""
-    local has_title=false
-    local spinner="dots"
-    local title=""
-    local show_output=false
-    local fps=0.1
-    local -a frames
-    
-    while [[ $# -gt 1 ]]; do
-        case "$1" in
-        --title)
-            has_title=true
-            title="$2"
-            shift 2
-            ;;
-        --spinner)
-            spinner="$2"
-            shift 2
-            ;;
-        --show-output)
-            show_output=true
-            shift
-            ;;
-        *)
-            gum_args+=("$1")
-            shift
-            ;;
-        esac
-    done
+  local func=""
+  local spinner="dots"
+  local title=""
+  local has_title=false
+  local show_output=false
+  local fps=0.1
+  local frames
 
-    func="$1"
-
-    # convert func name to title if no title passed
-    if ! $has_title; then
-        title="${func//[_-]/ }"
-        title="${title^} "
-    fi
-
-    # borrowed from gum spin
-    # https://github.com/charmbracelet/gum#spin
-    # https://github.com/charmbracelet/bubbles/blob/master/spinner/spinner.go 
-    case "$spinner" in
-        line)      frames=( "|" "/" "-" "\\" ); fps=0.1 ;;
-        dots)      frames=( "⣾" "⣽" "⣻" "⢿" "⡿" "⣟" "⣯" "⣷" ); fps=0.1 ;;
-        minidots)  frames=( "⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏" ); fps=0.083 ;;
-        jump)      frames=( "⢄" "⢂" "⢁" "⡁" "⡈" "⡐" "⡠" ); fps=0.1 ;;
-        pulse)     frames=( "█" "▓" "▒" "░" ); fps=0.125 ;;
-        points)    frames=( "∙∙∙" "●∙∙" "∙●∙" "∙∙●" ); fps=0.143 ;;
-        globe)     frames=( "🌍" "🌎" "🌏" ); fps=0.25 ;;
-        moon)      frames=( "🌑" "🌒" "🌓" "🌔" "🌕" "🌖" "🌗" "🌘" ); fps=0.125 ;;
-        monkey)    frames=( "🙈" "🙉" "🙊" ); fps=0.333 ;;
-        meter)     frames=( "▱▱▱" "▰▱▱" "▰▰▱" "▰▰▰" "▰▰▱" "▰▱▱" "▱▱▱" ); fps=0.143 ;;
-        hamburger) frames=( "☱" "☲" "☴" "☲" ); fps=0.333 ;;
-        ellipsis)  frames=( "  " ".  " ".. " "..." " .." "  ." "   " ); fps=0.143 ;;
-        *)         frames=( "|" "/" "-" "\\" ); fps=0.1 ;;
+  # Parse flags
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --title)       shift; title=$1; has_title=true ;;
+      --spinner)     shift; spinner=$1 ;;
+      --show-output) show_output=true ;;
+      *) func=$1; break ;;
     esac
+    shift
+  done
 
-    # =================================================
+  # Default title from func name
+  if [ "$has_title" != true ]; then
+    title=$(printf "%s" "$func" | tr '_-' ' ')
+    title="$(printf "%s" "${title^}") "
+  fi
 
-    start_spinner() {
-        local title="$1"
-        spinner_running=true
+  # Spinner frames
+  case "$spinner" in
+    line)      frames='| / - \';;
+    dots)      frames='⣾ ⣽ ⣻ ⢿ ⡿ ⣟ ⣯ ⣷';;
+    minidots)  frames='⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏';;
+    jump)      frames='⢄ ⢂ ⢁ ⡁ ⡈ ⡐ ⡠';;
+    pulse)     frames='█ ▓ ▒ ░';;
+    points)    frames='∙∙∙ ●∙∙ ∙●∙ ∙∙●';;
+    globe)     frames='🌍 🌎 🌏';;
+    moon)      frames='🌑 🌒 🌓 🌔 🌕 🌖 🌗 🌘';;
+    monkey)    frames='🙈 🙉 🙊';;
+    meter)     frames='▱▱▱ ▰▱▱ ▰▰▱ ▰▰▰ ▰▰▱ ▰▱▱ ▱▱▱';;
+    hamburger) frames='☱ ☲ ☴ ☲';;
+    ellipsis)  frames='   .  .. ... .. .   ';;
+    *)         frames='| / - \';;
+  esac
 
-        {
-            i=0
-            while $spinner_running; do
-                printf "\r\033[K${C_MAGENTA}%s${C_NC} %s" "${frames[i]}" "$title"
-                i=$(( (i + 1) % ${#frames[@]} ))
-                sleep "$fps"
-            done
-        } &
-        SPINNER_PID=$!
-        disown $SPINNER_PID   
-    }
+  # Spinner loop
+  start_spinner() {
+    local title="$1"
+    spinner_running=true
+    local i=0
 
-    stop_spinner(){
-        spinner_running=false
-        kill "$SPINNER_PID" 2>/dev/null
-        printf "%b" "\033[2K\r" # clear the line
-    }
-
-    _spin_print() {
-      while IFS= read -r line; do
-        printf "%b" "\033[2K\r" # clear the line
-        echo -e "${C_GRAY}│${C_NC} $line"
+    (
+      while [ "$spinner_running" = true ]; do
+        set -- $frames
+        eval "frame=\${$(($i + 1))}"
+        printf "\r\033[K${C_MAGENTA}%s${C_NC} %s" "$frame" "$title"
+        i=$(( (i + 1) % $# ))
+        sleep "$fps"
       done
-    }
+    ) &
+    SPINNER_PID=$!
+    disown "$SPINNER_PID"
+  }
 
-    # =================================================
-    
-    start_spinner "$title"
+  stop_spinner() {
+    spinner_running=false
+    kill "$SPINNER_PID" 2>/dev/null
+    printf "\r\033[K"
+  }
 
-    if [[ $show_output == "true" ]]; then
-      tmp_fifo=$(mktemp -u)
-      mkfifo "$tmp_fifo"
-      _spin_print < "$tmp_fifo" &
-      "$func" > "$tmp_fifo"
-      wait 
-    else
-      "$func" >/dev/null 2>&1
-    fi
-    
-    stop_spinner
-    
-    printf "%b\n" "\r\033[K${C_GRAY}╰─ ${C_GREEN}✓${C_NC} $title\n" # all done!
-    printf "%b" "\e[?25h"  # show cursor again
-    set -m
+  _spin_print() {
+    while IFS= read -r line; do
+      printf "\r\033[K"
+      printf "%b\n" "${C_GRAY}│${C_NC} $line"
+    done
+  }
+
+  start_spinner "$title"
+
+  if [ "$show_output" = true ]; then
+    tmp_fifo=$(mktemp -u)
+    mkfifo "$tmp_fifo"
+    _spin_print < "$tmp_fifo" &
+    spin_pid=$!
+
+    line_count=$(
+      "$func" 2>&1 \
+      | tee "$tmp_fifo" \
+      | wc -l
+    )
+
+    wait "$spin_pid"
+    rm -f "$tmp_fifo"
+  else
+    "$func" >/dev/null 2>&1
+    line_count=0
+  fi
+
+  stop_spinner
+
+  # Done message (with alignment if prior output shown)
+  if [ "$line_count" -gt 0 ]; then
+    printf "%b\n" "\r\033[K${C_GRAY}╰─ ${C_GREEN}✓${C_NC} $title"
+  else
+    printf "%b\n" "\r\033[K     ${C_GREEN}✓${C_NC} $title"
+  fi
+
+  printf "\033[?25h"  # show cursor
+  set -m              # restore job control
 }
+
 
 # parsing flag arguments
 function _parseargs() {
