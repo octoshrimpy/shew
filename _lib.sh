@@ -248,118 +248,126 @@ function _parseargs() {
   fi  
 }
 
-# remove color from outputs we can't control (gum, etc)
-function _stripcolors() {
+# Always removes ANSI color codes from input (stdin or args).
+# Example: printf '\033[0;31mRed\033[0m\n' | _stripcolors
+_stripcolors() {
+  local ansi_regex=$'\033\\[[0-9;]*m'
+  local input=""
 
-  local input
-  # Check if there are arguments
   if [ "$#" -gt 0 ]; then
-      input="$*"
+    input="$*"
   else
-      # Read from stdin
-      while IFS= read -r line; do
-          input+="$line\n"
-      done
+    while IFS= read -r line; do
+      input="${input}${line}"$'\n'
+    done
   fi
 
- # if not forcing, and NO_COLOR is not set
-  if [ "$1" = "-f" ] \
-     ||  [[ "$NO_COLOR" == "true" ]]\
-     || [[ ! -t 1 && -n "$PS1" ]]; then
-    echo -e "$input" #| cat
+  printf "%s" "$input" | sed -E "s/${ansi_regex}//g"
+}
+
+
+# Echoes color code only if colors are allowed (NO_COLOR not set, and stdout is terminal)
+# Example: RED=$(_nocolor '\033[0;31m')
+_nocolor() {
+  if [ "${NO_COLOR:-}" = "true" ] || [ ! -t 1 ]; then
+    printf ""
   else
-    echo -e "$input"
+    printf "%s" "$1"
   fi
 }
 
-# Helper function for setupcolors
-function _nocolor() {
-
-  # Check if script.sh is sourced, 
-  # or no_color flagged,
-  # or output is not a terminal 
-  if [[ "$NO_COLOR" == "true" ]] \
-     || [[ ! -t 1 && -n "$PS1" ]]; then
-    echo ""
-  else
-    echo "$1"
-  fi
-}
-
-# parse ENV:NO_COLOR 
+# Initializes terminal color/style variables, respecting NO_COLOR or non-TTY.
+# Call early in script to safely use exported C_* vars.
 function _setupcolors() {
 
-  # This script is used to define colors for bash scripts
-  # GitHub: https://github.com/OzzyCzech/colors.sh
+  # Terminal color and style definitions
   # Author: Roman Ožana <roman@ozana.cz>
+  # Modified by: octoshrimpy <shew@octo.sh>
   # License: MIT
-  # 
-  # Expanded by octoshrimpy
-  # https://github.com/octoshrimpy
 
-  # Resets
-  C_NC="$(_nocolor '\033[0m')" # reset color
-  C_RESET="$(_nocolor '\033[0m')" # reset color
-  C_FG_RESET="$(_nocolor "\e[39m")" # Reset foreground color
-  C_BG_RESET="$(_nocolor "\e[49m")" # Reset background color
-
-  # Basic colors
+  # 🎨 16-color Foreground Palette
+  C_BLACK="$(_nocolor '\033[0;30m')"
   C_RED="$(_nocolor '\033[0;31m')"
   C_GREEN="$(_nocolor '\033[0;32m')"
   C_YELLOW="$(_nocolor '\033[0;33m')"
   C_BLUE="$(_nocolor '\033[0;34m')"
   C_MAGENTA="$(_nocolor '\033[0;35m')"
   C_CYAN="$(_nocolor '\033[0;36m')"
-  C_BLACK="$(_nocolor '\033[0;30m')"
   C_WHITE="$(_nocolor '\033[0;37m')"
-  C_GRAY="$(_nocolor '\033[0;90m')"
 
-  # Styles
+  export C_BLACK C_RED C_GREEN C_YELLOW 
+  export C_BLUE C_MAGENTA C_CYAN C_WHITE
+
+  # 🌈 Bright Foreground Colors
+  C_B_BLACK="$(_nocolor '\033[0;90m')"   # often used as gray
+  C_B_RED="$(_nocolor '\033[0;91m')"
+  C_B_GREEN="$(_nocolor '\033[0;92m')"
+  C_B_YELLOW="$(_nocolor '\033[0;93m')"
+  C_B_BLUE="$(_nocolor '\033[0;94m')"
+  C_B_MAGENTA="$(_nocolor '\033[0;95m')"
+  C_B_CYAN="$(_nocolor '\033[0;96m')"
+  C_B_WHITE="$(_nocolor '\033[0;97m')"
+
+  export C_B_BLACK C_B_RED C_B_GREEN C_B_YELLOW 
+  export C_B_BLUE C_B_MAGENTA C_B_CYAN C_B_WHITE
+
+  # 🔲 Background Colors (standard)
+  C_BG_BLACK="$(_nocolor '\033[40m')"
+  C_BG_RED="$(_nocolor '\033[41m')"
+  C_BG_GREEN="$(_nocolor '\033[42m')"
+  C_BG_YELLOW="$(_nocolor '\033[43m')"
+  C_BG_BLUE="$(_nocolor '\033[44m')"
+  C_BG_MAGENTA="$(_nocolor '\033[45m')"
+  C_BG_CYAN="$(_nocolor '\033[46m')"
+  C_BG_WHITE="$(_nocolor '\033[47m')"
+
+  export C_BG_BLACK C_BG_RED C_BG_GREEN C_BG_YELLOW 
+  export C_BG_BLUE C_BG_MAGENTA C_BG_CYAN C_BG_WHITE
+
+  # 🌈 Bright Backgrounds (some terminals only)
+  C_BG_B_BLACK="$(_nocolor '\033[100m')"
+  C_BG_B_RED="$(_nocolor '\033[101m')"
+  C_BG_B_GREEN="$(_nocolor '\033[102m')"
+  C_BG_B_YELLOW="$(_nocolor '\033[103m')"
+  C_BG_B_BLUE="$(_nocolor '\033[104m')"
+  C_BG_B_MAGENTA="$(_nocolor '\033[105m')"
+  C_BG_B_CYAN="$(_nocolor '\033[106m')"
+  C_BG_B_WHITE="$(_nocolor '\033[107m')"
+
+  export C_BG_B_BLACK C_BG_B_RED C_BG_B_GREEN C_BG_B_YELLOW 
+  export C_BG_B_BLUE C_BG_B_MAGENTA C_BG_B_CYAN C_BG_B_WHITE
+
+  # ✨ Styles
   C_BOLD="$(_nocolor '\033[1m')"
-  C_DIM="$(_nocolor '\033[2m')"
-  C_ITALIC="$(_nocolor '\033[3m')"
-  C_UNDERLINE="$(_nocolor '\033[4m')"
+  C_DIM="$(_nocolor '\033[2m')"       # aka faint
+  C_ITALIC="$(_nocolor '\033[3m')"    # not widely supported
+  C_UNDER="$(_nocolor '\033[4m')"
   C_BLINK="$(_nocolor '\033[5m')"
   C_REVERSE="$(_nocolor '\033[7m')"
+  C_HIDDEN="$(_nocolor '\033[8m')"
   C_STRIKE="$(_nocolor '\033[9m')"
 
-  # Unstyles
-  C_UNBOLD="$(_nocolor '\033[22m')"
+  export C_BOLD C_DIM C_ITALIC C_UNDER 
+  export C_BLINK C_REVERSE C_HIDDEN C_STRIKE
+
+  # 🔄 Undo Styles
+  C_UNBOLD="$(_nocolor '\033[21m')"
   C_UNDIM="$(_nocolor '\033[22m')"
   C_UNITALIC="$(_nocolor '\033[23m')"
-  C_UNDERLINE_OFF="$(_nocolor '\033[24m')"
+  C_UNUNDER="$(_nocolor '\033[24m')"
   C_UNBLINK="$(_nocolor '\033[25m')"
   C_UNREVERSE="$(_nocolor '\033[27m')"
+  C_UNHIDDEN="$(_nocolor '\033[28m')"
   C_UNSTRIKE="$(_nocolor '\033[29m')"
 
-  # exports
-  # https://www.shellcheck.net/wiki/SC2155
-  export C_NC
-  export C_RESET
-  export C_FG_RESET
-  export C_BG_RESET
-  export C_RED
-  export C_GREEN
-  export C_YELLOW
-  export C_BLUE
-  export C_MAGENTA
-  export C_CYAN
-  export C_BLACK
-  export C_WHITE
-  export C_GRAY
-  export C_BOLD
-  export C_DIM
-  export C_ITALIC
-  export C_UNDERLINE
-  export C_BLINK
-  export C_REVERSE
-  export C_STRIKE
-  export C_UNBOLD
-  export C_UNDIM
-  export C_UNITALIC
-  export C_UNDERLINE_OFF
-  export C_UNBLINK
-  export C_UNREVERSE
-  export C_UNSTRIKE
+  export C_UNBOLD C_UNDIM C_UNITALIC C_UNUNDER 
+  export C_UNBLINK C_UNREVERSE C_UNHIDDEN C_UNSTRIKE
+
+  # 🧼 Reset Colors
+  C_RESET_FG="$(_nocolor '\033[39m')"
+  C_RESET_BG="$(_nocolor '\033[49m')"
+  C_NC="$(_nocolor '\033[0m')" # reset all (colors + styles)
+
+  export C_RESET_FG C_RESET_BG C_NC
 }
 
