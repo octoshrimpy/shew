@@ -371,3 +371,80 @@ function _setupcolors() {
   export C_RESET_FG C_RESET_BG C_NC
 }
 
+
+# converts given text to pixelart 3x3 figlet font
+# _fig "sphynx of black quartz, hear my vow - 12345678 and 9"
+# shellcheck disable=SC2120
+# shellcheck disable=SC2034
+function _fig() {
+    T_a=" ▄▄\033[1B\033[3D▀▄█\033[1A\033[1C" # a
+    T_b="▄  \033[1B\033[3D███\033[1A\033[1C" # b
+    T_c="▄▄▄\033[1B\033[3D█▄▄\033[1A\033[1C" # c
+    T_d="  ▄\033[1B\033[3D███\033[1A\033[1C" # d
+    T_e=" ▄▄\033[1B\033[3D▀█▄\033[1A\033[1C" # e
+    T_f="▄▄▄\033[1B\033[3D█▀ \033[1A\033[1C" # f
+    T_g="▄▄▄\033[1B\033[3D▀▄█\033[1A\033[1C" # g
+    T_h="▄ ▄\033[1B\033[3D█▀█\033[1A\033[1C" # h
+    T_i="▄▄▄\033[1B\033[3D▄█▄\033[1A\033[1C" # i
+    T_j="  ▄\033[1B\033[3D█▄█\033[1A\033[1C" # j
+    T_k="▄ ▄\033[1B\033[3D█▀▄\033[1A\033[1C" # k
+    T_l="▄  \033[1B\033[3D█▄▄\033[1A\033[1C" # l
+    T_m="▄▄▄\033[1B\033[3D█▀█\033[1A\033[1C" # m
+    T_n="▄▄ \033[1B\033[3D█ █\033[1A\033[1C" # n
+    T_o="▄▄▄\033[1B\033[3D█▄█\033[1A\033[1C" # o
+    T_p="▄▄▄\033[1B\033[3D█▀▀\033[1A\033[1C" # p
+    T_q="▄▄▄\033[1B\033[3D▀▀█\033[1A\033[1C" # q
+    T_r=" ▄▄\033[1B\033[3D█ ▀\033[1A\033[1C" # r
+    T_s=" ▄▄\033[1B\033[3D▄█ \033[1A\033[1C" # s
+    T_t="▄▄▄\033[1B\033[3D █ \033[1A\033[1C" # t
+    T_u="▄ ▄\033[1B\033[3D█▄█\033[1A\033[1C" # u
+    T_v="▄ ▄\033[1B\033[3D▀▄▀\033[1A\033[1C" # v
+    T_w="▄ ▄\033[1B\033[3D██▀\033[1A\033[1C" # w
+    T_x="▄ ▄\033[1B\033[3D▄▀▄\033[1A\033[1C" # x
+    T_y="▄ ▄\033[1B\033[3D▀█▀\033[1A\033[1C" # y
+    T_z="▄▄ \033[1B\033[3D █▄\033[1A\033[1C" # z
+    
+    T_space="\033[2C" # ` `
+
+    T_1="▄▄ \033[1B\033[3D▄█▄\033[1A\033[1C" # 1
+    T_2="▄  \033[1B\033[3D █▄\033[1A\033[1C" # 2
+    T_3="▄▄▄\033[1B\033[3D▄█▀\033[1A\033[1C" # 3
+    T_4="▄ ▄\033[1B\033[3D▀▀█\033[1A\033[1C" # 4
+    T_5=" ▄▄\033[1B\033[3D▄▀ \033[1A\033[1C" # 5
+    T_6="▄  \033[1B\033[3D███\033[1A\033[1C" # 6
+    T_7="▄▄▄\033[1B\033[3D  █\033[1A\033[1C" # 7
+    T_8=" ▄▄\033[1B\033[3D██▀\033[1A\033[1C" # 8
+    T_9="▄▄▄\033[1B\033[3D▀▀█\033[1A\033[1C" # 9
+    T_0=" ▄▄\033[1B\033[3D█▄▀\033[1A\033[1C" # 0
+
+    T_dash="   \033[1B\033[3D▀▀▀\033[1A\033[1C" # -
+    T_comma="   \033[1B\033[3D▄▀ \033[1A\033[1C" # ,
+    T_period="   \033[1B\033[3D▄  \033[1A\033[1C" # ,
+
+
+    local string="$*"
+    processing="$string"
+    result=
+
+    # TODO: switch case, and more chars
+    for (( i=0; i<${#processing}; i++ )); do
+        letter="${processing:$i:1}"
+        varname="T_$letter"
+        if [[ $letter == " " ]]; then
+            varname="T_space"
+        elif [[ $letter == "-" ]]; then
+            varname="T_dash"
+        elif [[ $letter == "," ]]; then
+            varname="T_comma"
+        elif [[ $letter == "." ]]; then
+            varname="T_period"
+        fi
+        value="${!varname}"
+
+        result+="$value"
+    done
+
+    # not -e on purpose, so user can handle it later
+    echo "$result"
+
+}
