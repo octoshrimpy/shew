@@ -549,3 +549,128 @@ function _fig() {
 
 }
 
+
+_input() {
+  # === Default Config ===
+  local prompt="> "
+  local placeholder="Type something..."
+  local initial_value=""
+  local char_limit=400
+  local password=false
+  local header=""
+  local timeout=0
+
+  # === Parse Arguments ===
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --prompt) shift; prompt="$1" ;;
+      --placeholder) shift; placeholder="$1" ;;
+      --default) shift; initial_value="$1" ;;
+      --timeout) shift; timeout="$1" ;;
+      --char-limit) shift; char_limit="$1" ;;
+      --password) password=true ;;
+      --header) shift; header="$1" ;;
+      *) echo "Unknown option: $1"; return 1 ;;
+    esac
+    shift
+  done
+
+  
+    # disable input echo
+    stty -echo
+
+    trap 'stty echo; return 130;' SIGINT
+
+
+  # === Inner Helpers ===
+  _print_header() {
+    [[ -n "$header" ]] && echo -e "${C_B_BLACK}${header}${C_NC}"
+  }
+    
+    _draw_input() {
+    echo -ne "\033[2K\r"           # Clear line
+    echo -ne "${prompt}"           # Print prompt
+
+    if (( ${#input} == 0 )); then
+        echo -ne "\033[s"            # Save cursor position
+        echo -ne "${C_B_BLACK}${placeholder}${C_NC}"
+        echo -ne "\033[u"            # Restore to input start
+    else
+        if [[ "$password" == true ]]; then
+        printf '%*s' "${#input}" '' | tr ' ' '*'
+        else
+        echo -n "$input"
+        fi
+    fi
+    }
+
+
+  _cleanup() {
+    echo -ne "\e[2K"
+    [[ -n "$header" ]] && echo -ne "\e[1A\e[2K"
+    echo -ne "\e[0G"
+  }
+
+  # === Main Logic ===
+  _print_header
+
+  local input="$initial_value"
+  local end_time=0
+  local last_time_left=-1
+  local time_left=0
+
+  [[ "$timeout" -gt 0 ]] && end_time=$(( $(date +%s) + timeout ))
+
+  _draw_input
+
+  while true; do
+    if [[ "$timeout" -gt 0 ]]; then
+      now_time=$(date +%s)
+      time_left=$(( end_time - now_time ))
+      if (( time_left <= 0 )); then
+        _cleanup
+        return 130
+      fi
+    fi
+
+    if [[ "$time_left" -ne "$last_time_left" ]]; then
+      last_time_left=$time_left
+      _draw_input
+    fi
+
+    if IFS= read -rsn1 -t 0.1 key; then
+      case "$key" in
+        "") break ;;  # Enter
+        $'\177')  # Backspace
+          input="${input%?}"
+          ;;
+        *)
+          if [[ "${#input}" -lt "$char_limit" ]]; then
+            input+="$key"
+          fi
+          ;;
+      esac
+      _draw_input
+    fi
+  done
+  
+    _cleanup
+    stty echo
+    echo -e "$input"
+}
+
+
+# _input --header "unit tests!"
+# _input --placeholder "ohello"
+# _input --prompt "what was your name again? " --placeholder "Johnny Appleseed"
+# _input --prompt "System pswd: " --password
+
+
+
+
+
+
+
+
+
+
