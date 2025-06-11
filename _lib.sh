@@ -646,6 +646,110 @@ _input() {
 
 
 
+_write() {
+  local HEADER="" PLACEHOLDER=""
+  local -a LINES=("")
+
+  local LINE_INDEX=0 CURSOR=0
+  local PROMPT="▏ "
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --header) HEADER="${C_CYAN}$2${C_NC}"; shift 2 ;;
+      --placeholder) PLACEHOLDER="${C_B_BLACK}$2${C_NC}"; shift 2 ;;
+      *) echo "Unknown option: $1" >&2; return 1 ;;
+    esac
+  done
+
+  stty -echo -icanon time 1 min 0
+  trap 'stty sane; echo; return 130' INT
+  read -t  0.1 -rsn100 discard
+
+  [ -n "$HEADER" ] && printf "%b\n" "$HEADER"
+
+  local last_esc_time=0
+
+  redraw_line() {
+    printf "\r\033[K%s" "$PROMPT"
+    if [ -z "${LINES[LINE_INDEX]}" ] && [ "$LINE_INDEX" -eq 0 ] && [ -n "$PLACEHOLDER" ]; then
+      printf "%b" "$PLACEHOLDER"
+    else
+      printf "%s" "${LINES[LINE_INDEX]}"
+    fi
+    # Move cursor to correct position
+    local move=$(( ${#LINES[LINE_INDEX]} - CURSOR ))
+    for _ in $(seq 1 "$move"); do printf "\b"; done
+  }
+
+  redraw_line
+
+  while :; do
+    IFS= read -rsn1 key
+    if [[ "$key" == $'\x1b' ]]; then
+      IFS= read -t 0.05 -rsn1 next
+      if [[ "$next" == "[" ]]; then
+        IFS= read -rsn1 arrow
+        case "$arrow" in
+          A) [ "$LINE_INDEX" -gt 0 ] && LINE_INDEX=$((LINE_INDEX - 1)) && CURSOR=${#LINES[LINE_INDEX]} ;;
+          B) [ "$LINE_INDEX" -lt $((${#LINES[@]} - 1)) ] && LINE_INDEX=$((LINE_INDEX + 1)) && CURSOR=${#LINES[LINE_INDEX]} ;;
+          C) [ "$CURSOR" -lt "${#LINES[LINE_INDEX]}" ] && CURSOR=$((CURSOR + 1)) ;;
+          D) [ "$CURSOR" -gt 0 ] && CURSOR=$((CURSOR - 1)) ;;
+        esac
+        redraw_line
+        continue
+      fi
+
+      local now
+      now=$(date +%s%3N)
+      if (( now - last_esc_time < 500 )); then
+        break
+      fi
+      last_esc_time=$now
+      continue
+    fi
+
+    case "$key" in
+      "") # Enter
+        echo ""
+        LINE_INDEX=$((LINE_INDEX + 1))
+        LINES=("${LINES[@]:0:$LINE_INDEX}" "" "${LINES[@]:$LINE_INDEX}")
+        CURSOR=0
+        redraw_line
+        ;;
+      $'\x7f') # Backspace
+        if [ "$CURSOR" -gt 0 ]; then
+          LINES[LINE_INDEX]="${LINES[LINE_INDEX]:0:CURSOR-1}${LINES[LINE_INDEX]:CURSOR}"
+          CURSOR=$((CURSOR - 1))
+        elif [ "$LINE_INDEX" -gt 0 ]; then
+          CURSOR=${#LINES[LINE_INDEX-1]}
+          LINES[LINE_INDEX-1]+="${LINES[LINE_INDEX]}"
+          unset 'LINES[LINE_INDEX]'
+          LINES=("${LINES[@]}")
+          LINE_INDEX=$((LINE_INDEX - 1))
+          echo -ne "\033[1A"  # move up
+        fi
+        redraw_line
+        ;;
+      *) # Regular character
+        [[ "$key" =~ [[:print:]] ]] || continue
+        LINES[LINE_INDEX]="${LINES[LINE_INDEX]:0:CURSOR}${key}${LINES[LINE_INDEX]:CURSOR}"
+        CURSOR=$((CURSOR + 1))
+        redraw_line
+        ;;
+    esac
+  done
+
+  stty sane
+  echo ""
+  printf "%s\n" "$(IFS=$'\n'; echo "${LINES[*]}")"
+}
+
+
+
+
+_write --header "Write your message" --placeholder "Start typing..."
+
+
 
 
 
