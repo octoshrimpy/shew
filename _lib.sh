@@ -550,121 +550,98 @@ function _fig() {
 }
 
 
+
 _input() {
-  # === Default Config ===
-  local prompt="> "
-  local placeholder="Type something..."
-  local initial_value=""
-  local char_limit=400
-  local password=false
-  local header=""
-  local timeout=0
+  local HEADER="" PROMPT="> " PLACEHOLDER="" VALUE="" PASSWORD=false
 
-  # === Parse Arguments ===
-  while [[ $# -gt 0 ]]; do
+  while [ "$#" -gt 0 ]; do
     case "$1" in
-      --prompt) shift; prompt="$1" ;;
-      --placeholder) shift; placeholder="$1" ;;
-      --default) shift; initial_value="$1" ;;
-      --timeout) shift; timeout="$1" ;;
-      --char-limit) shift; char_limit="$1" ;;
-      --password) password=true ;;
-      --header) shift; header="$1" ;;
-      *) echo "Unknown option: $1"; return 1 ;;
+      --header) HEADER="${C_CYAN}$2${C_NC}"; shift 2 ;;
+      --prompt) PROMPT="$2"; shift 2 ;;
+      --placeholder) PLACEHOLDER="${C_B_BLACK}$2${C_NC}"; shift 2 ;;
+      --value) VALUE="$2"; shift 2 ;;
+      --password) PASSWORD=true; shift ;;
+      *) echo "Unknown option: $1" >&2; return 1 ;;
     esac
-    shift
   done
 
-  
-    # disable input echo
-    stty -echo
+  stty -echo -icanon min 1 time 0
+  trap 'stty sane; echo; return 130' INT
 
-    trap 'stty echo; return 130;' SIGINT
+  [ -n "$HEADER" ] && printf "%b\n" "$HEADER"
+  printf "%b" "$PROMPT"
 
+  local INPUT="$VALUE"
+  local CURSOR=${#INPUT}
+  local PLACEHOLDER_SHOWN=false
 
-  # === Inner Helpers ===
-  _print_header() {
-    [[ -n "$header" ]] && echo -e "${C_B_BLACK}${header}${C_NC}"
-  }
-    
-    _draw_input() {
-    echo -ne "\033[2K\r"           # Clear line
-    echo -ne "${prompt}"           # Print prompt
+  if [ -z "$INPUT" ] && [ -n "$PLACEHOLDER" ]; then
+    printf "%b" "$PLACEHOLDER"
+    PLACEHOLDER_SHOWN=true
+    # Move cursor back to input start
+    printf "\r%b" "$PROMPT"
+  else
+    [ "$PASSWORD" = true ] && printf "%s" "$(printf "%${#INPUT}s" | tr ' ' '*')" || printf "%s" "$INPUT"
+  fi
 
-    if (( ${#input} == 0 )); then
-        echo -ne "\033[s"            # Save cursor position
-        echo -ne "${C_B_BLACK}${placeholder}${C_NC}"
-        echo -ne "\033[u"            # Restore to input start
-    else
-        if [[ "$password" == true ]]; then
-        printf '%*s' "${#input}" '' | tr ' ' '*'
-        else
-        echo -n "$input"
+  while :; do
+    IFS= read -r -n1 key
+    case "$key" in
+      "") break ;; # Enter
+      $'\x7f') # Backspace
+        if [ "$CURSOR" -gt 0 ]; then
+          INPUT="${INPUT:0:CURSOR-1}${INPUT:CURSOR}"
+          CURSOR=$((CURSOR - 1))
+          local tail="${INPUT:CURSOR}"
+          printf "\b%s \b" "$tail"
+          for _ in $(seq "${#tail}"); do printf "\b"; done
         fi
-    fi
-    }
-
-
-  _cleanup() {
-    echo -ne "\e[2K"
-    [[ -n "$header" ]] && echo -ne "\e[1A\e[2K"
-    echo -ne "\e[0G"
-  }
-
-  # === Main Logic ===
-  _print_header
-
-  local input="$initial_value"
-  local end_time=0
-  local last_time_left=-1
-  local time_left=0
-
-  [[ "$timeout" -gt 0 ]] && end_time=$(( $(date +%s) + timeout ))
-
-  _draw_input
-
-  while true; do
-    if [[ "$timeout" -gt 0 ]]; then
-      now_time=$(date +%s)
-      time_left=$(( end_time - now_time ))
-      if (( time_left <= 0 )); then
-        _cleanup
-        return 130
-      fi
-    fi
-
-    if [[ "$time_left" -ne "$last_time_left" ]]; then
-      last_time_left=$time_left
-      _draw_input
-    fi
-
-    if IFS= read -rsn1 -t 0.1 key; then
-      case "$key" in
-        "") break ;;  # Enter
-        $'\177')  # Backspace
-          input="${input%?}"
-          ;;
-        *)
-          if [[ "${#input}" -lt "$char_limit" ]]; then
-            input+="$key"
-          fi
-          ;;
-      esac
-      _draw_input
-    fi
+        if [ -z "$INPUT" ] && [ -n "$PLACEHOLDER" ] && [ "$PLACEHOLDER_SHOWN" = false ]; then
+          printf "\r%b\033[K%b" "$PROMPT" "$PLACEHOLDER"
+          printf "\r%b" "$PROMPT"
+          PLACEHOLDER_SHOWN=true
+        fi
+        ;;
+      $'\033') # Escape sequence
+        read -r -n2 rest
+        case "$rest" in
+          '[D') [ "$CURSOR" -gt 0 ] && CURSOR=$((CURSOR - 1)) && printf "\b" ;;
+          '[C')
+            if [ "$CURSOR" -lt "${#INPUT}" ]; then
+              [ "$PASSWORD" = true ] && printf "*" || printf "%s" "${INPUT:$CURSOR:1}"
+              CURSOR=$((CURSOR + 1))
+            fi
+            ;;
+        esac
+        ;;
+      *)
+        if [ "$PLACEHOLDER_SHOWN" = true ]; then
+          printf "\r%b\033[K" "$PROMPT"
+          PLACEHOLDER_SHOWN=false
+        fi
+        INPUT="${INPUT:0:CURSOR}${key}${INPUT:CURSOR}"
+        CURSOR=$((CURSOR + 1))
+        local tail="${INPUT:CURSOR}"
+        [ "$PASSWORD" = true ] && printf "*%s" "$(printf "%${#tail}s" | tr ' ' '*')" || printf "%s%s" "$key" "$tail"
+        for _ in $(seq "${#tail}"); do printf "\b"; done
+        ;;
+    esac
   done
   
-    _cleanup
-    stty echo
-    echo -e "$input"
+    stty sane
+
+    # Clear input line
+    printf "\r\033[K"
+
+    # Clear header line if it was printed
+    if [ -n "$HEADER" ]; then
+    printf "\033[1A\r\033[K"  # Move up and clear
+    fi
+
+    # Output final input
+    printf "%s\n" "$INPUT"
+
 }
-
-
-# _input --header "unit tests!"
-# _input --placeholder "ohello"
-# _input --prompt "what was your name again? " --placeholder "Johnny Appleseed"
-# _input --prompt "System pswd: " --password
-
 
 
 
