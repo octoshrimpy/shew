@@ -653,7 +653,6 @@ _input() {
 
 }
 
-
 # _write: Interactive multiline text input with header, placeholder, and cursor navigation.
 # flags: --header str, --placeholder str
 # use: _write --header "Tell me a story:" --placeholder "Once upon a time..."
@@ -662,7 +661,6 @@ _write() {
   local -a INPUT_BUF=("")
   local LINE_INDEX=0 CURSOR=0
   local PROMPT="▏ "
-  local C_HEADER="\033[36m" C_PLC="\033[90m" C_RESET="\033[0m"
   local ANCHOR_ROW=0 ANCHOR_COL=0
   local TERM_HEIGHT=24
   local PAD_LINES=8
@@ -679,8 +677,8 @@ _write() {
   # Parse arguments
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --header) HEADER="${C_HEADER}$2${C_RESET}"; HEADER_LINES=1; shift 2 ;;
-      --placeholder) PLACEHOLDER="${C_PLC}$2${C_RESET}"; shift 2 ;;
+      --header) HEADER="${C_CYAN}$2${C_NC}"; HEADER_LINES=1; shift 2 ;;
+      --placeholder) PLACEHOLDER="${C_B_BLACK}$2${C_NC}"; shift 2 ;;
       *) echo "Unknown option: $1" >&2; return 1 ;;
     esac
   done
@@ -902,6 +900,3 @@ _write() {
     printf "%s\n" "$line"
   done
 }
-
-
-
