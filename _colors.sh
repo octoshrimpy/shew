@@ -56,7 +56,7 @@ export C_HIDDEN='\033[8m'
 export C_STRIKE='\033[9m'
 
 # 🔄 Undo Styles
-export C_UNBOLD='\033[21m'
+export C_UNBOLD='\033[22m'
 export C_UNDIM='\033[22m'
 export C_UNITALIC='\033[23m'
 export C_UNUNDER='\033[24m'

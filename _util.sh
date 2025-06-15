@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-LPWD="$PWD/$(dirname ${BASH_SOURCE[0]})"
+LPWD="$PWD/$(dirname "${BASH_SOURCE[0]}")"
 
 # Guide: https://github.com/dylanaraps/writing-a-tui-in-bash
 # This script provides various utilities for terminal UI manipulation in Bash.
@@ -7,8 +7,8 @@ LPWD="$PWD/$(dirname ${BASH_SOURCE[0]})"
 # Cursor Management
 # These functions control the cursor's visibility, position, and movement within the terminal.
 
+# shellcheck disable=SC1091
 . "$LPWD/_colors.sh"
-. "$LPWD/box.sh"
 
 # Hide the cursor
 # Usage: cursor_hide
@@ -194,7 +194,7 @@ disable_mouse() {
 on_key() {
     local key_identifier=$1
     local handler_function=$2
-    KEY_EVENT_HANDLERS[$key_identifier]=$handler_function
+    KEY_EVENT_HANDLERS[key_identifier]=$handler_function
 }
 
 # Register mouse event handler
@@ -202,7 +202,7 @@ on_key() {
 on_mouse() {
     local mouse_event=$1
     local handler_function=$2
-    MOUSE_EVENT_HANDLERS[$mouse_event]=$handler_function
+    MOUSE_EVENT_HANDLERS[mouse_event]=$handler_function
 }
 
 # Main Event Loop
@@ -259,19 +259,4 @@ listen_for_events() {
     done
 
     disable_mouse
-}
-
-# Set text color
-# Usage: set_text_color foreground_color background_color
-# Color codes: 0-7 are the standard colors, 30-37 for foreground, 40-47 for background
-set_text_color() {
-  local fg_color=$1
-  local bg_color=$2
-  printf '\033[%s;%sm' "$fg_color" "$bg_color"
-}
-
-# Reset text color to default
-# Usage: reset_text_color
-reset_text_color() {
-  printf '\033[0m'
 }
