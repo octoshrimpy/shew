@@ -111,12 +111,17 @@ _filter() {
     }
 
     _draw_count() {
+        local filter="/ to filter"
+
+        if ((FILTER_MODE)); then
+            filter=" [enter] to apply, [esc] to cancel"
+        fi
         if [[ $MULTI -eq 1 && $LIMIT -gt 0 ]]; then
             local selected_count=0
             for n in "${SELECTED[@]}"; do ((selected_count += n)); done
             _move_to_line 1
             printf "\033[2K\r"
-            echo -e "${C_ITALIC}${C_B_BLACK}${selected_count}/${LIMIT} selected${C_NC}"
+            echo -e "${C_ITALIC}${C_B_BLACK}${selected_count}/${LIMIT} selected. $filter${C_NC}"
         fi
     }
 
@@ -232,17 +237,27 @@ _filter() {
     while IFS= read -rsn1 key; do
         if ((FILTER_MODE)); then
             if [[ $key == $'\x1b' ]]; then
+                # try to read an arrow‐sequence suffix
                 read -rsn2 -t 0.01 key2
-                case "$key2" in
-                "[A")
-                    ((CURSOR > 0)) && ((CURSOR--))
+                if [[ -z "$key2" ]]; then
+                    # plain Esc → cancel filter
+                    FILTER=""
+                    FILTER_MODE=0
+                    _fuzzy_filter
                     _draw_menu
-                    ;; # Up
-                "[B")
-                    ((CURSOR < ${#FILTERED[@]} - 1)) && ((CURSOR++))
-                    _draw_menu
-                    ;; # Down
-                esac
+                else
+                    # actual CSI: handle arrows
+                    case "$key2" in
+                    "[A")
+                        ((CURSOR > 0)) && ((CURSOR--))
+                        _draw_menu
+                        ;;
+                    "[B")
+                        ((CURSOR < ${#FILTERED[@]} - 1)) && ((CURSOR++))
+                        _draw_menu
+                        ;;
+                    esac
+                fi
                 continue
             fi
             case "$key" in
@@ -273,7 +288,9 @@ _filter() {
                 _draw_menu
                 ;;
             $'\x1b') # Esc: leave filter mode
+                FILTER=""
                 FILTER_MODE=0
+                _fuzzy_filter
                 _draw_menu
                 ;;
             *)
@@ -353,7 +370,7 @@ _filter() {
 
     stty sane
     __tty_leave
-    
+
     printf "\033[?25h"
     return 0
 }
