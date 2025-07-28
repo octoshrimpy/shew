@@ -1,5 +1,8 @@
 #! /usr/bin/env bash
 
+# TODO: overflow cleanly.
+# brew list | _filter --multi
+
 # _filter: Interactive single/multi-choice selector with header, prompt, fuzzy filtering, and keyboard navigation.
 # flags: --header str, --prompt str, --multi, --strict, --reverse, --limit int, --selected str, --label/--labels str
 # use: _filter --header "Choose your favorite:" --prompt "Pick one:" --multi --limit 3 --label "Apple|a Banana|b Cherry|c"
