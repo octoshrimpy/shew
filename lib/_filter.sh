@@ -4,7 +4,6 @@
 # flags: --header str, --prompt str, --multi, --strict, --reverse, --limit int, --selected str, --label/--labels str
 # use: _filter --header "Choose your favorite:" --prompt "Pick one:" --multi --limit 3 --label "Apple|a Banana|b Cherry|c"
 _filter() {
-    __tty_enter
 
     local HEADER="" PROMPT="" MULTI=0 STRICT=0 REVERSE=0 LIMIT=0
     local -a OPTIONS=() RAW_OPTIONS=() LABELS=() VALUES=() SELECTED_ITEMS=() SELECTED=()
@@ -55,7 +54,16 @@ _filter() {
             ;;
         esac
     done
+    
+    # read from stdin
+    if (( ${#OPTIONS[@]} == 0 )) && [[ ! -t 0 ]]; then
+        local stdin_data
+        stdin_data="$(cat)"
+        
+        mapfile -t OPTIONS <<<"$stdin_data"
+    fi
 
+    __tty_enter
     if [[ ${#RAW_OPTIONS[@]} -gt 0 ]]; then
         for item in "${RAW_OPTIONS[@]}"; do
             LABELS+=("${item%%|*}")
@@ -121,7 +129,7 @@ _filter() {
 
     # _draw_count
     # When in multi-select mode with a LIMIT, display how many items have been picked.
-    # Shows “X/Y selected” on the line immediately below the header, plus a hint  
+    # Shows “X/Y selected” on the line immediately below the header, plus a hint
     # (“/ to filter” or “[enter] to apply, [esc] to cancel”) based on FILTER_MODE.
     _draw_count() {
         local filter="/ to filter"
@@ -140,8 +148,8 @@ _filter() {
 
     # _highlight_match
     # Print a text string with occurrences of the current filter pattern highlighted.
-    # Performs case-insensitive matching.  
-    # If iscursor is true, bolds the whole line and renders the match in cyan;  
+    # Performs case-insensitive matching.
+    # If iscursor is true, bolds the whole line and renders the match in cyan;
     # otherwise only the matched substring is colored and bolded.
     # Arguments:
     #   $1  The full text of the option.
@@ -185,7 +193,7 @@ _filter() {
     # _fuzzy_filter
     # Rebuild the FILTERED and FILTERED_IDX arrays based on the current FILTER string.
     # If FILTER is empty, includes all ORIG_OPTIONS; otherwise includes only those
-    # whose lowercase form contains the lowercase FILTER.  
+    # whose lowercase form contains the lowercase FILTER.
     # Also ensures CURSOR stays within the new filtered list bounds.
     _fuzzy_filter() {
         FILTERED=()
