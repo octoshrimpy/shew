@@ -2,6 +2,9 @@
 
 set -euo pipefail
 
+# enter alternate screen
+# echo -e "\e[?1049h"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/_lib.sh" \
@@ -257,5 +260,8 @@ echo "Test _filter: use arrow keys to navigate and Tab to select/deselect (multi
 filter_result=$(_filter --header "Choose fruits:" --prompt "Pick some:" --multi --limit 2 --labels "Apple|1 Banana|2 Cherry|3 Date|4")
 echo "_filter returned: '$filter_result'"
 echo
+
+# exit alternate screen
+# echo -e "\e[?1049l"
 
 echo "All tests complete."
