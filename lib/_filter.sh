@@ -89,11 +89,20 @@ _filter() {
     [[ -n "$PROMPT" ]] && echo -ne "${PROMPT} " && ((HEADER_LINES++))
     printf "\033[s"
 
+    # _move_to_line
+    # Restore the cursor to the saved position (via ESC[s]), then move it down by N lines.
+    # Arguments:
+    #   $1  Number of lines to move the cursor down from the saved point.
     _move_to_line() {
         printf "\033[u"
         (($1 > 0)) && printf "\033[%dB" "$1"
     }
 
+    # _draw_header
+    # Redraw the header area: either the live filter prompt (in filter mode) or the static header text.
+    # In filter mode, shows the current FILTER string (or HEADER if empty) on a single line with inverted colors,
+    # positions the cursor at the end of the filter, and makes it visible.
+    # In normal mode, prints HEADER in cyan, then hides the cursor.
     _draw_header() {
         _move_to_line 0
         printf "\033[2K\r"
@@ -110,6 +119,10 @@ _filter() {
         fi
     }
 
+    # _draw_count
+    # When in multi-select mode with a LIMIT, display how many items have been picked.
+    # Shows “X/Y selected” on the line immediately below the header, plus a hint  
+    # (“/ to filter” or “[enter] to apply, [esc] to cancel”) based on FILTER_MODE.
     _draw_count() {
         local filter="/ to filter"
 
@@ -125,6 +138,15 @@ _filter() {
         fi
     }
 
+    # _highlight_match
+    # Print a text string with occurrences of the current filter pattern highlighted.
+    # Performs case-insensitive matching.  
+    # If iscursor is true, bolds the whole line and renders the match in cyan;  
+    # otherwise only the matched substring is colored and bolded.
+    # Arguments:
+    #   $1  The full text of the option.
+    #   $2  The filter pattern.
+    #   $3  Optional flag (“true”/nonzero) indicating whether this line is the current cursor.
     _highlight_match() {
         local text="$1" pat="$2" iscursor="${3:-false}"
         # If no pattern, just print (bold if iscursor)
@@ -160,6 +182,11 @@ _filter() {
         fi
     }
 
+    # _fuzzy_filter
+    # Rebuild the FILTERED and FILTERED_IDX arrays based on the current FILTER string.
+    # If FILTER is empty, includes all ORIG_OPTIONS; otherwise includes only those
+    # whose lowercase form contains the lowercase FILTER.  
+    # Also ensures CURSOR stays within the new filtered list bounds.
     _fuzzy_filter() {
         FILTERED=()
         FILTERED_IDX=()
@@ -174,6 +201,12 @@ _filter() {
         ((CURSOR >= ${#FILTERED[@]})) && CURSOR=0
     }
 
+    # _draw_option
+    # Render a single option line in the menu, given its position in the FILTERED array.
+    # Adds a pointer (>) for the cursor line, shows a checkbox or bullet for multi-select,
+    # applies highlighting to the matched substring, and bolds the focused line.
+    # Arguments:
+    #   $1  Index into FILTERED/FILTERED_IDX for which option to draw.
     _draw_option() {
         local fidx=$1
         local idx="${FILTERED_IDX[$fidx]}"
@@ -203,6 +236,12 @@ _filter() {
         fi
     }
 
+    # _draw_menu
+    # Clear the full menu area then redraw every part of the interface:
+    #   1. The header (_draw_header)
+    #   2. The count line (_draw_count), if in multi-select with a limit
+    #   3. Each filtered option (_draw_option)
+    # Manages cursor visibility depending on whether filter mode is active.
     _draw_menu() {
         local total_lines=$((1 + COUNT_LINE + ${#ORIG_OPTIONS[@]}))
         _move_to_line 0

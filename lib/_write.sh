@@ -5,7 +5,7 @@
 # use: _write --header "Tell me a story:" --placeholder "Once upon a time..."
 _write() {
   __tty_enter
-  
+
   local HEADER="" PLACEHOLDER=""
   local -a INPUT_BUF=("")
   local LINE_INDEX=0 CURSOR=0
@@ -180,7 +180,8 @@ _write() {
         esac
         continue
       fi
-      local now=$(date +%s%3N)
+      local now
+      now=$(date +%s%3N)
       if ((now - last_esc_time < 500)); then
         printf "\n"
         break
@@ -269,7 +270,7 @@ _write() {
   printf "\033[?25h" # Show cursor
 
   __tty_leave
-  
+
   for line in "${INPUT_BUF[@]}"; do
     printf "%s\n" "$line"
   done

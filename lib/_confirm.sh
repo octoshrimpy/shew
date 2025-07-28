@@ -1,8 +1,13 @@
 #! /usr/bin/env bash
 
-# _confirm: Ask user for confirmation
-# use: _confirm --affirmative "aye!" --negative "nay.." --prompt "Are ye a pirate?" --default false --timeout 5
-# shellcheck disable=SC2120
+# _confirm: Ask user for confirmation with optional timeout and custom labels
+# usage:
+#   _confirm --affirmative "aye!" --negative "nay.." --prompt "Are ye a pirate?" --default false --timeout 5
+# returns:
+#   0 if the user selects the affirmative option
+#   1 if the user selects the negative option
+#   130 on timeout or Ctrl+C
+
 _confirm() {
     __tty_enter
 
@@ -11,7 +16,7 @@ _confirm() {
     local prompt="Are you sure?"
     local timeout=0
     local selected=0 # 0 = affirmative, 1 = negative
-    local last_time_left=-1
+    local last_time_left=-1  # used to avoid redrawing if timer hasn’t changed
 
     # Trap Ctrl+C and Ctrl+Q
     trap "" SIGQUIT
@@ -38,6 +43,7 @@ _confirm() {
             ;;
         --default)
             shift
+            # if default is false, pre-select negative
             [[ "$1" == false ]] && selected=1
             ;;
         *)
@@ -49,8 +55,9 @@ _confirm() {
     done
 
     # Hide cursor
-    printf "\033[?25l" # hide cursor
+    printf "\033[?25l"
 
+    # If using a timeout, calculate end time
     if [[ $timeout -gt 0 ]]; then
         local now_time
         now_time=$(date +%s)
@@ -60,23 +67,35 @@ _confirm() {
         time_left="$timeout"
     fi
 
-    # Draw buttons
+    # --- Inner function: draw_buttons ---
+    # Redraws the prompt line, timer (if any), and both buttons,
+    # highlighting the currently selected option.
     draw_buttons() {
         local time_prefix=""
         if [[ $timeout -gt 0 ]]; then
+            # Show countdown in seconds before the prompt
             time_prefix="${C_YELLOW}${time_left}s${C_B_BLACK} :: ${C_NC}"
         fi
 
+        # Print prompt line (with optional timer)
         echo -e "${time_prefix}${C_CYAN}${C_ITALIC}$prompt${C_NC}\n"
 
+        # Print affirmative and negative "buttons"
         if [[ $selected -eq 0 ]]; then
+            # highlight affirmative
             echo -e " ${C_BLACK}${C_BG_MAGENTA} $affirmative ${C_NC}  $negative ${C_NC}"
         else
+            # highlight negative
             echo -e "  $affirmative ${C_NC} ${C_BLACK}${C_BG_MAGENTA} $negative ${C_NC}"
         fi
-        echo -ne "\e[3A\e[1G" # move cursor up two and to line start
+
+        # Move cursor back up so we can overwrite on next draw
+        echo -ne "\e[3A\e[1G" 
     }
 
+    # --- Inner function: cleanup ---
+    # Restores cursor visibility, clears prompt lines, resets terminal state,
+    # and calls __tty_leave to exit raw mode.
     cleanup() {
         # Show cursor again
         echo -ne "\e[3B\e[1A\e[2K\e[1A\e[1A\e[2K\e[1G"
@@ -85,12 +104,14 @@ _confirm() {
         __tty_leave
     }
 
+    # Initial draw
     draw_buttons
 
     # disable input echo
     stty -echo
     while true; do
 
+        # Update and redraw timer if needed
         if [[ $timeout -gt 0 ]]; then
             now_time=$(date +%s)
             time_left=$((end_time - now_time))
@@ -110,15 +131,15 @@ _confirm() {
         # Non-blocking input check
         if read -rsn3 -t 0.1 key; then
             case "$key" in
-            $'\e[C')
+            $'\e[C')              # Right arrow → select "No"
                 selected=1
                 draw_buttons
                 ;; # Right arrow
-            $'\e[D')
+            $'\e[D')              # Left arrow → select "Yes"
                 selected=0
                 draw_buttons
                 ;; # Left arrow
-            "") break ;;
+            "") break ;;          # Enter key → break and accept current selection
             esac
         fi
         sleep 0.1

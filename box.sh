@@ -23,26 +23,26 @@ box() {
 
     # top bar
     printf "┌"
-    for ((i = 0; i < $_width; i++)); do
+    for ((i = 0; i < _width; i++)); do
         printf "─"
     done
     printf "┐"
     
     # next line
     cursor_move down 1
-    cursor_move left $width
+    cursor_move left "$width"
 
-    for ((i = 0; i < $_height; i++)); do
+    for ((i = 0; i < _height; i++)); do
         printf "│"
         cursor_move right $_width
         printf "│"
         cursor_move down 1
-        cursor_move left $width
+        cursor_move left "$width"
     done
     
     # bottom bar
     printf "└"
-    for ((i = 0; i < $_width; i++)); do
+    for ((i = 0; i < _width; i++)); do
         printf "─"
     done
     
