@@ -12,6 +12,8 @@ lib::_filter() {
     local -a OPTIONS=() RAW_OPTIONS=() LABELS=() VALUES=() SELECTED_ITEMS=() SELECTED=()
     local SELECTED_STR=""
     local POINTER=">" SELECTABLE="●" UNSELECTABLE="᳃" CHECKED="✔"
+    local MAX_LINES=10 # default page height
+    local PAGE=0 NPAGES=0
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -47,6 +49,10 @@ lib::_filter() {
             IFS=' ' read -r -a RAW_OPTIONS <<<"$2"
             shift 2
             ;;
+        --max)
+            MAX_LINES="$2"
+            shift 2
+            ;;
         --)
             shift
             break
@@ -57,13 +63,10 @@ lib::_filter() {
             ;;
         esac
     done
-    
-    # read from stdin
-    if (( ${#OPTIONS[@]} == 0 )) && [[ ! -t 0 ]]; then
-        local stdin_data
-        stdin_data="$(cat)"
-        
-        mapfile -t OPTIONS <<<"$stdin_data"
+
+    # if we have no positional OPTIONS and stdin is coming from a pipe, read all of it
+    if ((${#OPTIONS[@]} == 0)) && ! tty -s; then
+        mapfile -t OPTIONS
     fi
 
     lib::__tty_enter
@@ -94,6 +97,7 @@ lib::_filter() {
 
     local FILTER="" FILTER_MODE=0 CURSOR=0 HEADER_LINES=0
     local COUNT_LINE=$((MULTI && LIMIT > 0 ? 1 : 0))
+    local VISIBLE=$MAX_LINES
 
     # TODO: rethink prompt logic
     printf "\033[?25l"
@@ -206,10 +210,16 @@ lib::_filter() {
             for i in "${!ORIG_OPTIONS[@]}"; do FILTERED_IDX+=($i); done
         else
             for i in "${!ORIG_OPTIONS[@]}"; do
-                [[ "${ORIG_OPTIONS[i],,}" == *"${FILTER,,}"* ]] && FILTERED+=("${ORIG_OPTIONS[i]}") && FILTERED_IDX+=("$i")
+                [[ "${ORIG_OPTIONS[i],,}" == *"${FILTER,,}"* ]] && {
+                    FILTERED+=("${ORIG_OPTIONS[i]}")
+                    FILTERED_IDX+=("$i")
+                }
             done
         fi
+        # recalc pages
+        NPAGES=$(((${#FILTERED[@]} + VISIBLE - 1) / VISIBLE))
         ((CURSOR >= ${#FILTERED[@]})) && CURSOR=0
+        ((PAGE >= NPAGES)) && PAGE=0
     }
 
     # _draw_option
@@ -254,34 +264,45 @@ lib::_filter() {
     #   3. Each filtered option (_draw_option)
     # Manages cursor visibility depending on whether filter mode is active.
     lib::filter::_draw_menu() {
-        local total_lines=$((1 + COUNT_LINE + ${#ORIG_OPTIONS[@]}))
+        # clear area
+        local total=$((1 + COUNT_LINE + VISIBLE + 1)) # +footer
         lib::filter::_move_to_line 0
-        for ((i = 0; i < total_lines; i++)); do
+        for ((i = 0; i < total; i++)); do
             printf "\033[2K\r"
-            ((i < total_lines - 1)) && printf "\033[1B"
+            ((i < total - 1)) && printf "\033[1B"
         done
         lib::filter::_move_to_line 0
+
+        # header + count
         lib::filter::_draw_header
-        [[ $MULTI -eq 1 && $LIMIT -gt 0 ]] && _draw_count
-        local start=$((1 + COUNT_LINE))
-        for ((i = 0; i < ${#FILTERED[@]}; i++)); do
-            lib::filter::_move_to_line $((start + i))
-            lib::filter::_draw_option "$i"
+        ((MULTI == 1 && LIMIT > 0)) && lib::filter::_draw_count
+
+        # show page window
+        local start=$((PAGE * VISIBLE))
+        local end=$((start + VISIBLE))
+        ((end > ${#FILTERED[@]})) && end=${#FILTERED[@]}
+        local y=$((1 + COUNT_LINE))
+        for ((fidx = start; fidx < end; fidx++)); do
+            lib::filter::_move_to_line $y
+            lib::filter::_draw_option $fidx
+            ((y++))
         done
-        if ((FILTER_MODE)); then
-            lib::filter::_move_to_line 0
-            printf "\r"
-            [[ ${#FILTER} -gt 0 ]] && printf "\033[%dC" "${#FILTER}"
-            printf "\033[?25h"
-        else
-            printf "\033[?25l"
-        fi
+
+        # footer: page bullets
+        lib::filter::_move_to_line $y
+        for ((p = 0; p < NPAGES; p++)); do
+            if ((p == PAGE)); then printf "%s " "$SELECTABLE"; else printf "%s " "$UNSELECTABLE"; fi
+        done
+        printf "\n"
+
+        # cursor visibility
+        if ((FILTER_MODE)); then printf "\033[?25h"; else printf "\033[?25l"; fi
     }
 
     lib::filter::_fuzzy_filter
     lib::filter::_draw_menu
 
-    trap 'stty sane; printf "\033[?25h"; return 130' INT
+    trap 'stty sane; lib::__tty_leave; printf "\033[?25h"; return 130' INT
     stty -echo -icanon time 0 min 1
 
     while IFS= read -rsn1 key; do
@@ -299,11 +320,17 @@ lib::_filter() {
                     # actual CSI: handle arrows
                     case "$key2" in
                     "[A")
-                        ((CURSOR > 0)) && ((CURSOR--))
+                        if ((CURSOR > 0)); then
+                            ((CURSOR--))
+                            PAGE=$((CURSOR / VISIBLE))
+                        fi
                         lib::filter::_draw_menu
                         ;;
                     "[B")
-                        ((CURSOR < ${#FILTERED[@]} - 1)) && ((CURSOR++))
+                        if ((CURSOR < ${#FILTERED[@]} - 1)); then
+                            ((CURSOR++))
+                            PAGE=$((CURSOR / VISIBLE))
+                        fi
                         lib::filter::_draw_menu
                         ;;
                     esac
@@ -353,17 +380,56 @@ lib::_filter() {
         fi
 
         if [[ $key == $'\x1b' ]]; then
+            # read a CSI sequence (e.g. [A, [B, [C, [D])
             read -rsn2 -t 0.01 key2
+            old_PAGE=$PAGE
+            old_CURSOR=$CURSOR
             case "$key2" in
-            "[A")
+            "[A") # Up arrow: move up
                 ((CURSOR > 0)) && ((CURSOR--))
-                lib::filter::_draw_menu
                 ;;
-            "[B")
+            "[B") # Down arrow: move down
                 ((CURSOR < ${#FILTERED[@]} - 1)) && ((CURSOR++))
-                lib::filter::_draw_menu
+                ;;
+            "[C") # Right arrow: next page
+                if ((PAGE < NPAGES - 1)); then
+                    ((PAGE++))
+                    CURSOR=$((PAGE * VISIBLE))
+                fi
+                ;;
+            "[D") # Left arrow: previous page
+                if ((PAGE > 0)); then
+                    ((PAGE--))
+                    # place cursor at last item of the new page
+                    CURSOR=$((PAGE * VISIBLE + VISIBLE - 1))
+                    ((CURSOR >= ${#FILTERED[@]})) && CURSOR=$((${#FILTERED[@]} - 1))
+                fi
                 ;;
             esac
+            # re-sync page
+            PAGE=$((CURSOR / VISIBLE))
+            if ((PAGE != old_PAGE)); then
+                # full redraw on page change
+                lib::filter::_draw_menu
+            else
+                # same page → just repaint the two cursor lines
+                rel_old=$((old_CURSOR % VISIBLE))
+                rel_new=$((CURSOR % VISIBLE))
+                # line numbers offset by header/count
+                old_line=$((rel_old + 1 + COUNT_LINE))
+                new_line=$((rel_new + 1 + COUNT_LINE))
+
+                # redraw old cursor slot without pointer (use absolute index)
+                lib::filter::_move_to_line $old_line
+                lib::filter::_draw_option $old_CURSOR
+
+                # redraw new cursor slot with pointer (use absolute index)
+                lib::filter::_move_to_line $new_line
+                lib::filter::_draw_option $CURSOR
+
+                # keep cursor hidden in normal mode
+                printf "\033[?25l"
+            fi
             continue
         fi
         case "$key" in
@@ -402,6 +468,8 @@ lib::_filter() {
                 done
             fi
             printf "\033[?25h"
+            lib::__tty_leave
+
             local out=()
             if [[ $MULTI -eq 1 ]]; then
                 for i in "${!ORIG_OPTIONS[@]}"; do [[ ${SELECTED[i]} -eq 1 ]] && out+=("${ORIG_OPTIONS[i]}"); done

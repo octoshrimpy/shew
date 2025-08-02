@@ -3,7 +3,7 @@
 # _input: Single-line interactive input with optional header, prompt, placeholder, value preset, and password masking.
 # flags: --header str, --prompt str, --placeholder str, --value str, --password
 # use: _input --header "Username:" --prompt "> " --placeholder "Enter your username"
-_input() {
+lib::_input() {
   lib::__tty_enter
 
   local HEADER="" PROMPT="> " PLACEHOLDER="" VALUE="" PASSWORD=false
