@@ -3,8 +3,8 @@
 # _spin: Animate a spinner while running a command.
 # flags: --title str, --spinner type, --show-output
 # use: _spin --spinner dots --title "Waiting" do_thing
-_spin() {
-  __tty_enter
+lib::_spin() {
+  lib::__tty_enter
 
   printf "\033[?25l" # hide cursor
   set +m             # disable job control
@@ -43,8 +43,28 @@ _spin() {
     title=$(printf "%s" "$func" | tr '_-' ' ')
     title="$(printf "%s" "${title^}") "
   fi
+  
+  
+  if [[ "$title" == *::* ]]; then
+    
+    # Extract the last segment after the last '::'
+    last_segment="${title##*::}"
+
+    # Remove the last segment from the title to get the path base
+    path_base="${title%::*}"
+
+    # Replace all '::' with '/' to form a clean path
+    path="${path_base//:://}"
+
+    # Format the final title
+    title="$last_segment${C_CYAN}● ${C_GRAY}${C_ITALIC}$path${C_NC}"
+  fi
+
+
+
 
   # Spinner frames
+  # shellcheck disable=SC1003
   case "$spinner" in
   line) frames='| / - \' ;;
   dots) frames='⣾ ⣽ ⣻ ⢿ ⡿ ⣟ ⣯ ⣷' ;;
@@ -61,8 +81,20 @@ _spin() {
   *) frames='| / - \' ;;
   esac
 
+
+  lib::spin::on_interrupt() {
+    spinner_running=false
+    kill "$SPINNER_PID" 2>/dev/null
+    printf "\r\033[K"
+    printf "\033[?25h" # show cursor
+    set -m             # restore job control
+    lib::__tty_leave
+    echo -e "\n${C_RED}✗${C_NC} Interrupted"
+    exit 1
+  }
+
   # Spinner loop
-  start_spinner() {
+  lib::spin::start_spinner() {
     local title="$1"
     spinner_running=true
     local i=0
@@ -70,7 +102,7 @@ _spin() {
     (
       while [ "$spinner_running" = true ]; do
         set -- $frames
-        eval "frame=\${$(($i + 1))}"
+        eval "frame=\${$((i + 1))}"
         printf "\r\033[K${C_MAGENTA}%s${C_NC} %s" "$frame" "$title"
         i=$(((i + 1) % $#))
         sleep "$fps"
@@ -80,32 +112,45 @@ _spin() {
     disown "$SPINNER_PID"
   }
 
-  stop_spinner() {
+  lib::spin::stop_spinner() {
     spinner_running=false
     kill "$SPINNER_PID" 2>/dev/null
     printf "\r\033[K"
   }
 
-  _spin_print() {
+  lib::spin::_spin_print() {
     while IFS= read -r line; do
       printf "\r\033[K"
       printf "%b\n" "${C_GRAY}│${C_NC} $line"
     done
   }
 
-  start_spinner "$title"
+  trap lib::spin::on_interrupt SIGINT
+
+  lib::spin::start_spinner "$title"
 
   if [ "$show_output" = true ]; then
     tmp_fifo=$(mktemp -u)
     mkfifo "$tmp_fifo"
-    _spin_print <"$tmp_fifo" &
-    spin_pid=$!
 
-    line_count=$(
-      "$func" 2>&1 |
-        tee "$tmp_fifo" |
-        wc -l
-    )
+    # Start background reader and line counter
+    # TODO: use _spin_print
+      line_count=0
+      {
+        while IFS= read -r line; do
+          printf "\r\033[K"
+          printf "%b\n" "${C_GRAY}│${C_NC} $line"
+          line_count=$((line_count + 1))
+        done < "$tmp_fifo"
+      } &
+      spin_pid=$!
+
+  # Redirect stdout and stderr to the FIFO, run in current shell
+    exec 3>"$tmp_fifo"
+    {
+      "$func"
+    } 2>&1 >&3
+    exec 3>&-
 
     wait "$spin_pid"
     rm -f "$tmp_fifo"
@@ -114,16 +159,16 @@ _spin() {
     line_count=0
   fi
 
-  stop_spinner
+  lib::spin::stop_spinner
 
   # Done message (with alignment if prior output shown)
   if [ "$line_count" -gt 0 ]; then
-    printf "%b\n" "\r\033[K${C_GRAY}╰─ ${C_GREEN}✓${C_NC} $title"
+    printf "%b\n" "\r\033[K${C_GRAY}╰─ ${C_GREEN}✓${C_NC} $title \n"
   else
     printf "%b\n" "\r\033[K     ${C_GREEN}✓${C_NC} $title"
   fi
-
+  
   printf "\033[?25h" # show cursor
   set -m             # restore job control
-  __tty_leave
+  lib::__tty_leave
 }

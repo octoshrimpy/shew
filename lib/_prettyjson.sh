@@ -2,7 +2,7 @@
 
 # _prettyjson: Format JSON with jq or a fallback if jq is missing.
 # use: echo '{"x":1}' | _prettyjson
-_prettyjson() {
+lib::_prettyjson() {
   local json_input
 
   # Read from argument(s) or stdin

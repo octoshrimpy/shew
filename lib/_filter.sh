@@ -6,7 +6,7 @@
 # _filter: Interactive single/multi-choice selector with header, prompt, fuzzy filtering, and keyboard navigation.
 # flags: --header str, --prompt str, --multi, --strict, --reverse, --limit int, --selected str, --label/--labels str
 # use: _filter --header "Choose your favorite:" --prompt "Pick one:" --multi --limit 3 --label "Apple|a Banana|b Cherry|c"
-_filter() {
+lib::_filter() {
 
     local HEADER="" PROMPT="" MULTI=0 STRICT=0 REVERSE=0 LIMIT=0
     local -a OPTIONS=() RAW_OPTIONS=() LABELS=() VALUES=() SELECTED_ITEMS=() SELECTED=()
@@ -66,7 +66,7 @@ _filter() {
         mapfile -t OPTIONS <<<"$stdin_data"
     fi
 
-    __tty_enter
+    lib::__tty_enter
     if [[ ${#RAW_OPTIONS[@]} -gt 0 ]]; then
         for item in "${RAW_OPTIONS[@]}"; do
             LABELS+=("${item%%|*}")
@@ -104,7 +104,7 @@ _filter() {
     # Restore the cursor to the saved position (via ESC[s]), then move it down by N lines.
     # Arguments:
     #   $1  Number of lines to move the cursor down from the saved point.
-    _move_to_line() {
+    lib::filter::_move_to_line() {
         printf "\033[u"
         (($1 > 0)) && printf "\033[%dB" "$1"
     }
@@ -114,8 +114,8 @@ _filter() {
     # In filter mode, shows the current FILTER string (or HEADER if empty) on a single line with inverted colors,
     # positions the cursor at the end of the filter, and makes it visible.
     # In normal mode, prints HEADER in cyan, then hides the cursor.
-    _draw_header() {
-        _move_to_line 0
+    lib::filter::_draw_header() {
+        lib::filter::_move_to_line 0
         printf "\033[2K\r"
         if ((FILTER_MODE)); then
             printf "%b" "${C_B_BLACK}"
@@ -134,7 +134,7 @@ _filter() {
     # When in multi-select mode with a LIMIT, display how many items have been picked.
     # Shows “X/Y selected” on the line immediately below the header, plus a hint
     # (“/ to filter” or “[enter] to apply, [esc] to cancel”) based on FILTER_MODE.
-    _draw_count() {
+    lib::filter::_draw_count() {
         local filter="/ to filter"
 
         if ((FILTER_MODE)); then
@@ -143,7 +143,7 @@ _filter() {
         if [[ $MULTI -eq 1 && $LIMIT -gt 0 ]]; then
             local selected_count=0
             for n in "${SELECTED[@]}"; do ((selected_count += n)); done
-            _move_to_line 1
+            lib::filter::_move_to_line 1
             printf "\033[2K\r"
             echo -e "${C_ITALIC}${C_B_BLACK}${selected_count}/${LIMIT} selected. $filter${C_NC}"
         fi
@@ -158,7 +158,7 @@ _filter() {
     #   $1  The full text of the option.
     #   $2  The filter pattern.
     #   $3  Optional flag (“true”/nonzero) indicating whether this line is the current cursor.
-    _highlight_match() {
+    lib::filter::_highlight_match() {
         local text="$1" pat="$2" iscursor="${3:-false}"
         # If no pattern, just print (bold if iscursor)
         if [[ -z "$pat" ]]; then
@@ -198,7 +198,7 @@ _filter() {
     # If FILTER is empty, includes all ORIG_OPTIONS; otherwise includes only those
     # whose lowercase form contains the lowercase FILTER.
     # Also ensures CURSOR stays within the new filtered list bounds.
-    _fuzzy_filter() {
+    lib::filter::_fuzzy_filter() {
         FILTERED=()
         FILTERED_IDX=()
         if [[ -z "$FILTER" ]]; then
@@ -218,7 +218,7 @@ _filter() {
     # applies highlighting to the matched substring, and bolds the focused line.
     # Arguments:
     #   $1  Index into FILTERED/FILTERED_IDX for which option to draw.
-    _draw_option() {
+    lib::filter::_draw_option() {
         local fidx=$1
         local idx="${FILTERED_IDX[$fidx]}"
         local opt="${FILTERED[$fidx]}"
@@ -237,12 +237,12 @@ _filter() {
         if [[ $fidx -eq $CURSOR ]]; then
             printf "\033[2K\r"
             echo -ne "${C_NC}${POINTER} $prefix ${C_BOLD}"
-            _highlight_match "$opt" "$FILTER" "true"
+            lib::filter::_highlight_match "$opt" "$FILTER" "true"
             echo -e "${C_UNBOLD}${C_NC}"
         else
             printf "\033[2K\r"
             echo -ne "  $prefix "
-            _highlight_match "$opt" "$FILTER"
+            lib::filter::_highlight_match "$opt" "$FILTER"
             echo -e "${C_NC}"
         fi
     }
@@ -253,23 +253,23 @@ _filter() {
     #   2. The count line (_draw_count), if in multi-select with a limit
     #   3. Each filtered option (_draw_option)
     # Manages cursor visibility depending on whether filter mode is active.
-    _draw_menu() {
+    lib::filter::_draw_menu() {
         local total_lines=$((1 + COUNT_LINE + ${#ORIG_OPTIONS[@]}))
-        _move_to_line 0
+        lib::filter::_move_to_line 0
         for ((i = 0; i < total_lines; i++)); do
             printf "\033[2K\r"
             ((i < total_lines - 1)) && printf "\033[1B"
         done
-        _move_to_line 0
-        _draw_header
+        lib::filter::_move_to_line 0
+        lib::filter::_draw_header
         [[ $MULTI -eq 1 && $LIMIT -gt 0 ]] && _draw_count
         local start=$((1 + COUNT_LINE))
         for ((i = 0; i < ${#FILTERED[@]}; i++)); do
-            _move_to_line $((start + i))
-            _draw_option "$i"
+            lib::filter::_move_to_line $((start + i))
+            lib::filter::_draw_option "$i"
         done
         if ((FILTER_MODE)); then
-            _move_to_line 0
+            lib::filter::_move_to_line 0
             printf "\r"
             [[ ${#FILTER} -gt 0 ]] && printf "\033[%dC" "${#FILTER}"
             printf "\033[?25h"
@@ -278,8 +278,8 @@ _filter() {
         fi
     }
 
-    _fuzzy_filter
-    _draw_menu
+    lib::filter::_fuzzy_filter
+    lib::filter::_draw_menu
 
     trap 'stty sane; printf "\033[?25h"; return 130' INT
     stty -echo -icanon time 0 min 1
@@ -293,18 +293,18 @@ _filter() {
                     # plain Esc → cancel filter
                     FILTER=""
                     FILTER_MODE=0
-                    _fuzzy_filter
-                    _draw_menu
+                    lib::filter::_fuzzy_filter
+                    lib::filter::_draw_menu
                 else
                     # actual CSI: handle arrows
                     case "$key2" in
                     "[A")
                         ((CURSOR > 0)) && ((CURSOR--))
-                        _draw_menu
+                        lib::filter::_draw_menu
                         ;;
                     "[B")
                         ((CURSOR < ${#FILTERED[@]} - 1)) && ((CURSOR++))
-                        _draw_menu
+                        lib::filter::_draw_menu
                         ;;
                     esac
                 fi
@@ -323,30 +323,30 @@ _filter() {
                     else
                         SELECTED[idx]=1
                     fi
-                    _draw_menu
+                    lib::filter::_draw_menu
                 fi
                 ;;
             $'\177' | $'\010') # Backspace
                 if [[ -n "$FILTER" ]]; then
                     FILTER="${FILTER:0:-1}"
-                    _fuzzy_filter
-                    _draw_menu
+                    lib::filter::_fuzzy_filter
+                    lib::filter::_draw_menu
                 fi
                 ;;
             "") # Enter: leave filter mode
                 FILTER_MODE=0
-                _draw_menu
+                lib::filter::_draw_menu
                 ;;
             $'\x1b') # Esc: leave filter mode
                 FILTER=""
                 FILTER_MODE=0
-                _fuzzy_filter
-                _draw_menu
+                lib::filter::_fuzzy_filter
+                lib::filter::_draw_menu
                 ;;
             *)
                 FILTER="$FILTER$key"
-                _fuzzy_filter
-                _draw_menu
+                lib::filter::_fuzzy_filter
+                lib::filter::_draw_menu
                 ;;
             esac
             continue
@@ -357,11 +357,11 @@ _filter() {
             case "$key2" in
             "[A")
                 ((CURSOR > 0)) && ((CURSOR--))
-                _draw_menu
+                lib::filter::_draw_menu
                 ;;
             "[B")
                 ((CURSOR < ${#FILTERED[@]} - 1)) && ((CURSOR++))
-                _draw_menu
+                lib::filter::_draw_menu
                 ;;
             esac
             continue
@@ -379,12 +379,12 @@ _filter() {
                 else
                     SELECTED[idx]=1
                 fi
-                _draw_menu
+                lib::filter::_draw_menu
             fi
             ;;
         "/")
             FILTER_MODE=1
-            _draw_menu
+            lib::filter::_draw_menu
             ;;
         "") # Enter
             stty sane
@@ -419,7 +419,7 @@ _filter() {
     done
 
     stty sane
-    __tty_leave
+    lib::__tty_leave
 
     printf "\033[?25h"
     return 0

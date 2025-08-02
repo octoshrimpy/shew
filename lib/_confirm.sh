@@ -8,8 +8,8 @@
 #   1 if the user selects the negative option
 #   130 on timeout or Ctrl+C
 
-_confirm() {
-    __tty_enter
+lib::_confirm() {
+    lib::__tty_enter
 
     local affirmative="Yes"
     local negative="No"
@@ -70,7 +70,7 @@ _confirm() {
     # --- Inner function: draw_buttons ---
     # Redraws the prompt line, timer (if any), and both buttons,
     # highlighting the currently selected option.
-    draw_buttons() {
+    lib::confirm::draw_buttons() {
         local time_prefix=""
         if [[ $timeout -gt 0 ]]; then
             # Show countdown in seconds before the prompt
@@ -96,16 +96,16 @@ _confirm() {
     # --- Inner function: cleanup ---
     # Restores cursor visibility, clears prompt lines, resets terminal state,
     # and calls __tty_leave to exit raw mode.
-    cleanup() {
+    lib::confirm::cleanup() {
         # Show cursor again
         echo -ne "\e[3B\e[1A\e[2K\e[1A\e[1A\e[2K\e[1G"
         printf "\033[?25h" # show cursor
         stty echo
-        __tty_leave
+        lib::__tty_leave
     }
 
     # Initial draw
-    draw_buttons
+    lib::confirm::draw_buttons
 
     # disable input echo
     stty -echo
@@ -116,7 +116,7 @@ _confirm() {
             now_time=$(date +%s)
             time_left=$((end_time - now_time))
             if ((time_left <= 0)); then
-                cleanup
+                lib::confirm::cleanup
                 echo -e "${C_B_BLACK}Timed out${C_NC}"
                 return 130
             fi
@@ -125,7 +125,7 @@ _confirm() {
         # Only redraw if the countdown changed
         if [[ "$time_left" -ne "$last_time_left" ]]; then
             last_time_left=$time_left
-            draw_buttons
+            lib::confirm::draw_buttons
         fi
 
         # Non-blocking input check
@@ -133,11 +133,11 @@ _confirm() {
             case "$key" in
             $'\e[C')              # Right arrow → select "No"
                 selected=1
-                draw_buttons
+                lib::confirm::draw_buttons
                 ;; # Right arrow
             $'\e[D')              # Left arrow → select "Yes"
                 selected=0
-                draw_buttons
+                lib::confirm::draw_buttons
                 ;; # Left arrow
             "") break ;;          # Enter key → break and accept current selection
             esac
@@ -146,5 +146,5 @@ _confirm() {
 
     done
 
-    cleanup && return 130
+    lib::confirm::cleanup && return 130
 }

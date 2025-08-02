@@ -4,7 +4,7 @@
 # flags: --header str, --prompt str, --placeholder str, --value str, --password
 # use: _input --header "Username:" --prompt "> " --placeholder "Enter your username"
 _input() {
-  __tty_enter
+  lib::__tty_enter
 
   local HEADER="" PROMPT="> " PLACEHOLDER="" VALUE="" PASSWORD=false
 
@@ -111,7 +111,7 @@ _input() {
     printf "\033[1A\r\033[K" # Move up and clear
   fi
 
-  __tty_leave
+  lib::__tty_leave
   printf "%s\n" "$INPUT"
 
 }

@@ -3,7 +3,7 @@
 # _prt: Print message with prefix, colors, and multiline support.
 # flags: -w warning, -e error, -s replace prefix with spaces
 # use: _prt -w "Check your input"
-_prt() {
+lib::_prt() {
 
   local appname="${setappname:-APPNAME}"
   local brcolor="$C_CYAN"
@@ -51,7 +51,7 @@ _prt() {
   for _ in $(printf "%b" "$appname" | fold -w1); do
     appname_spaces+=" "
   done
-  local prefix_space="      ${appname_spaces}" # 5-space left margin + appname space
+  local prefix_space="     ${appname_spaces}" # 5-space left margin + appname space
 
   # Input may be passed as arguments, or piped via stdin
   if (($# > 0)); then
@@ -78,6 +78,6 @@ _prt() {
 
 # _prtty: Same as _prt but always writes to terminal.
 # use: _prtty -e "Critical failure"
-function _prtty() {
-  _prt "$@" >/dev/tty
+lib::_prtty() {
+  lib::_prt "$@" >/dev/tty
 }

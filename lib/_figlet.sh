@@ -4,8 +4,8 @@
 # _fig "sphynx of black quartz, hear my vow - 12345678 and 9"
 # shellcheck disable=SC2120
 # shellcheck disable=SC2034
-function _fig() {
-  __tty_enter
+function lib::_fig() {
+  lib::__tty_enter
 
   local T_a=" ▄▄\033[1B\033[3D▀▄█\033[1A\033[1C" # a
   local T_b="▄  \033[1B\033[3D███\033[1A\033[1C" # b
@@ -71,7 +71,7 @@ function _fig() {
     result+="$value"
   done
 
-  __tty_leave
+  lib::__tty_leave
 
   # not -e on purpose, so user can handle it later
   # make space for the text, and then move up 3, 
