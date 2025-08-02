@@ -433,7 +433,7 @@ lib::_filter() {
             continue
         fi
         case "$key" in
-        $'\t')
+        $'\t'|$' ') # outside filter mode, space can also toggle
             if [[ $MULTI -eq 1 && ${#FILTERED[@]} -gt 0 ]]; then
                 local idx="${FILTERED_IDX[$CURSOR]}"
                 local selected_count=0
