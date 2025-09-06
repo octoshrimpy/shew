@@ -1,4 +1,4 @@
-#! /usr/bin/env bash
+#!/usr/bin/env bash
 
 # _confirm: Ask user for confirmation with optional timeout and custom labels
 # usage:
@@ -8,8 +8,8 @@
 #   1 if the user selects the negative option
 #   130 on timeout or Ctrl+C
 
-lib::_confirm() {
-    lib::__tty_enter
+shew__confirm() {
+    shew__tty_enter
 
     local affirmative="Yes"
     local negative="No"
@@ -70,11 +70,11 @@ lib::_confirm() {
     # --- Inner function: draw_buttons ---
     # Redraws the prompt line, timer (if any), and both buttons,
     # highlighting the currently selected option.
-    lib::confirm::draw_buttons() {
+    shew__confirm__draw_buttons() {
         local time_prefix=""
         if [[ $timeout -gt 0 ]]; then
             # Show countdown in seconds before the prompt
-            time_prefix="${C_YELLOW}${time_left}s${C_B_BLACK} :: ${C_NC}"
+            time_prefix="${C_YELLOW}${time_left}s${C_B_BLACK} __ ${C_NC}"
         fi
 
         # Print prompt line (with optional timer)
@@ -96,16 +96,16 @@ lib::_confirm() {
     # --- Inner function: cleanup ---
     # Restores cursor visibility, clears prompt lines, resets terminal state,
     # and calls __tty_leave to exit raw mode.
-    lib::confirm::cleanup() {
+    shew__confirm__cleanup() {
         # Show cursor again
         echo -ne "\e[3B\e[1A\e[2K\e[1A\e[1A\e[2K\e[1G"
         printf "\033[?25h" # show cursor
         stty echo
-        lib::__tty_leave
+        shew__tty_leave
     }
 
     # Initial draw
-    lib::confirm::draw_buttons
+    shew__confirm__draw_buttons
 
     # disable input echo
     stty -echo
@@ -116,7 +116,7 @@ lib::_confirm() {
             now_time=$(date +%s)
             time_left=$((end_time - now_time))
             if ((time_left <= 0)); then
-                lib::confirm::cleanup
+                shew__confirm__cleanup
                 echo -e "${C_B_BLACK}Timed out${C_NC}"
                 return 130
             fi
@@ -125,7 +125,7 @@ lib::_confirm() {
         # Only redraw if the countdown changed
         if [[ "$time_left" -ne "$last_time_left" ]]; then
             last_time_left=$time_left
-            lib::confirm::draw_buttons
+            shew__confirm__draw_buttons
         fi
 
         # Non-blocking input check
@@ -133,11 +133,11 @@ lib::_confirm() {
             case "$key" in
             $'\e[C')              # Right arrow → select "No"
                 selected=1
-                lib::confirm::draw_buttons
+                shew__confirm__draw_buttons
                 ;; # Right arrow
             $'\e[D')              # Left arrow → select "Yes"
                 selected=0
-                lib::confirm::draw_buttons
+                shew__confirm__draw_buttons
                 ;; # Left arrow
             "") break ;;          # Enter key → break and accept current selection
             esac
@@ -146,5 +146,5 @@ lib::_confirm() {
 
     done
 
-    lib::confirm::cleanup && return 130
+    shew__confirm__cleanup && return 130
 }

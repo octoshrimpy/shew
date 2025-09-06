@@ -1,8 +1,8 @@
-#! /usr/bin/env bash
+#!/usr/bin/env bash
 
 # _prettyjson: Format JSON with jq or a fallback if jq is missing.
 # use: echo '{"x":1}' | _prettyjson
-lib::_prettyjson() {
+shew__prettyjson() {
   local json_input
 
   # Read from argument(s) or stdin

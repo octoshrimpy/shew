@@ -13,8 +13,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 export setappname="UNIT TESTS"
 
-# Helper function to display unit::section headers for readability
-unit::section() {
+# Helper function to display unit__section headers for readability
+unit__section() {
   printf "\n\n%b\n" "${C_GRAY}==== ${C_BLUE}$1 ${C_GRAY}====${C_NC}"
 }
 
@@ -23,24 +23,24 @@ unit::section() {
 # Begin tests
 
 # 1. _dryrun
-unit::section "Testing _dryrun"
+unit__section "Testing _dryrun"
 
 # Test with debug=false (default).  Expect the command to execute normally.
 export DEBUG=false
-lib::_prt "_dryrun executes command when DEBUG=false" 
-lib::_dryrun echo "Hello from _dryrun (DEBUG=false)"
+shew__prt "_dryrun executes command when DEBUG=false" 
+shew__dryrun echo "Hello from _dryrun (DEBUG=false)"
 
 # Test with debug=true.  Expect it to print a 'Skipping:' message and not
 # execute the command.  We set debug back to false afterwards so that later
 # tests are unaffected.
 DEBUG=true
-lib::_prt "_dryrun prints a skip message when DEBUG=true" 
-lib::_dryrun echo "This should not run"
+shew__prt "_dryrun prints a skip message when DEBUG=true" 
+shew__dryrun echo "This should not run"
 DEBUG=false
 
 
 # 2. _debug
-unit::section "Testing _debug"
+unit__section "Testing _debug"
 
 # Define a test function that sets a flag when run
 testfunc_run_flag=false
@@ -51,8 +51,8 @@ testfunc() {
 
 # When debug=true, _debug should execute the function and set rundebug to true
 export DEBUG=true
-lib::_prt "_debug executes function when DEBUG=true" 
-lib::_debug testfunc
+shew__prt "_debug executes function when DEBUG=true" 
+shew__debug testfunc
 echo "rundebug after _debug: $rundebug (expected: false after call)"
 echo "testfunc_run_flag: $testfunc_run_flag (expected: true)"
 DEBUG=false
@@ -60,67 +60,67 @@ echo
 
 
 # 3. _prettyjson
-unit::section "Testing _prettyjson"
+unit__section "Testing _prettyjson"
 
 # Provide a simple JSON string.  The output should be pretty printed if jq is
 # available, otherwise it will be minimally formatted by the fallback.  Either
 # way the result should be human-readable.
 json_input='{"name":"alice","age":30,"admin":false}'
-lib::_prt "Pretty print JSON (arg)" 
-lib::_prettyjson "$json_input"
+shew__prt "Pretty print JSON (arg)" 
+shew__prettyjson "$json_input"
 
 
 # 4. _prt
-unit::section "Testing _prt"
+unit__section "Testing _prt"
 
 # Test normal informational message
-lib::_prt "_prt default (info)" 
-lib::_prt "This is a normal message"
+shew__prt "_prt default (info)" 
+shew__prt "This is a normal message"
 
 # Test warning message
-lib::_prt "_prt with -w flag (warning)" 
-lib::_prt -w "This is a warning"
+shew__prt "_prt with -w flag (warning)" 
+shew__prt -w "This is a warning"
 
 # Test error message
-lib::_prt "_prt with -e flag (error)" 
-lib::_prt -e "This is an error"
+shew__prt "_prt with -e flag (error)" 
+shew__prt -e "This is an error"
 
 # Test silent message: prefix replaced with spaces
-lib::_prt "_prt with -s flag (silent)" 
-lib::_prt -s "This message uses a silent prefix"
+shew__prt "_prt with -s flag (silent)" 
+shew__prt -s "This message uses a silent prefix"
 
 # Test debug styling: when rundebug is true the colours invert.  We'll set
 # rundebug manually and call _prt; you should see different colours.
 rundebug=true
-lib::_prt "_prt during debug call (rundebug=true)" 
-lib::_prt "Message inside debug context"
+shew__prt "_prt during debug call (rundebug=true)" 
+shew__prt "Message inside debug context"
 rundebug=false
 
 
 # 5. _prtty
-unit::section "Testing _prtty"
+unit__section "Testing _prtty"
 
 # _prtty writes directly to /dev/tty, so when you run this script interactively
 # you should see the message appear in the terminal.  We'll invoke it here
 # without capturing the output.  Expect a bold error prefix and message.
 echo "Calling _prtty (error): you should see the output in your terminal"
-lib::_prtty -e "This error is written to /dev/tty"
+shew__prtty -e "This error is written to /dev/tty"
 echo
 
 
 # 6. _stripcolors
-unit::section "Testing _stripcolors"
+unit__section "Testing _stripcolors"
 
 # Create a coloured string manually using ANSI escape codes then strip them.
 coloured_string="${C_RED}Red${C_NC} and ${C_GREEN}Green${C_NC}"
 echo "Original string with colours: $coloured_string"
-stripped=$(lib::_stripcolors "$coloured_string")
+stripped=$(shew__stripcolors "$coloured_string")
 echo "After _stripcolors: $stripped (expected: 'Red and Green' with no escape codes)"
 echo
 
 
 # 7. _nocolor
-unit::section "Testing _nocolor"
+unit__section "Testing _nocolor"
 
 # A literal ANSI‐CSI for red
 TEST_ESC=$'\033[0;31m'
@@ -134,7 +134,7 @@ for state in unset true; do
   fi
 
   echo "→ NO_COLOR=$state"
-  color=$(lib::_nocolor "$TEST_ESC")
+  color=$(shew__nocolor "$TEST_ESC")
 
   # 1) raw (may actually turn the prompt red)
   printf "  raw output:   [%s]\n" "$color test $TEST_RESET"
@@ -146,23 +146,23 @@ unset NO_COLOR
 
 
 # 8. _setupcolors
-unit::section "Testing _setupcolors"
+unit__section "Testing _setupcolors"
 
 # Initialise colours and demonstrate their use.  After calling _setupcolors
 # colour variables like $C_RED should be defined.  We'll print a sample
 # coloured string and then strip colours to show that _stripcolors removes
 # them correctly.
-lib::_setupcolors
+shew__setupcolors
 echo -e "${C_GREEN}This should appear green${C_NC}"
 echo "Raw output without colours removed:"
 printf '%q\n' "${C_GREEN}This should appear green${C_NC}"
 echo "After stripping colours:"
-printf '%s\n' "$(lib::_stripcolors "${C_GREEN}This should appear green${C_NC}")"
+printf '%s\n' "$(shew__stripcolors "${C_GREEN}This should appear green${C_NC}")"
 echo
 
 
 # 9. _parseargs
-unit::section "Testing _parseargs"
+unit__section "Testing _parseargs"
 
 # When provided a flag and a value, _parseargs should echo the value.  If the
 # next argument looks like another flag, it should emit an error via _prtty
@@ -170,13 +170,13 @@ unit::section "Testing _parseargs"
 # _parseargs in a subshell.
 
 echo "Valid case: flag followed by value"
-value=$( lib::_parseargs --flag value )
+value=$( shew__parseargs --flag value )
 echo "Returned value: '$value' (expected: 'value')"
 
 echo "Error case: flag without value (should print error and exit)"
 {
   set +e
-  output=$(lib::_parseargs --flag 2>&1)
+  output=$(shew__parseargs --flag 2>&1)
   status=$?
   set -e
 }
@@ -189,19 +189,19 @@ echo
 
 
 # 10. _fig
-unit::section "Testing _fig"
+unit__section "Testing _fig"
 
 # Convert a sample string to 3x3 pixel art using _fig.  The result uses
 # cursor movement codes; you should see stylised characters printed one after
 # another.  Note that escape sequences may not render perfectly in all
 # environments.
-fig_output=$(lib::_fig "aaa")
+fig_output=$(shew__fig "aaa")
 printf "%b" "$fig_output"
 echo
 
 
 # 11. _spin
-unit::section "Testing _spin (interactive)"
+unit__section "Testing _spin (interactive)"
 
 # _spin animates a spinner while running a function.  We'll define a short
 # function that sleeps and prints some output, then run it with a spinner.
@@ -215,12 +215,12 @@ spin_test_func() {
 }
 
 echo "Running _spin with a sample function.  You should see a spinner with a title and lines of output."
-lib::_spin --spinner minidots --title "Processing" --show-output spin_test_func
+shew__spin --spinner minidots --title "Processing" --show-output spin_test_func
 echo
 
 
 # 12. _confirm
-unit::section "Testing _confirm (interactive)"
+unit__section "Testing _confirm (interactive)"
 
 # _confirm prompts the user for confirmation and returns with exit code 130
 # after the user presses Enter.  The selected option (Yes or No) isn't
@@ -228,35 +228,35 @@ unit::section "Testing _confirm (interactive)"
 # highlight when you press the left/right arrow keys.  We'll set a short
 # timeout so that the prompt doesn't block forever.
 echo "Invoke _confirm with custom labels.  Use arrow keys to choose then press Enter.  If no input is given it will time out after 5 seconds."
-lib::_confirm --affirmative "Proceed" --negative "Cancel" --prompt "Do you want to continue?" --timeout 5 || true
+shew__confirm --affirmative "Proceed" --negative "Cancel" --prompt "Do you want to continue?" --timeout 5 || true
 echo "_confirm returned exit status $? (130 indicates timeout or Enter)"
 echo
 
 
 # 13. _input
-unit::section "Testing _input (interactive)"
+unit__section "Testing _input (interactive)"
 
 echo "Test _input: please type a short line of text at the prompt.  The function will echo back your input after you press Enter."
-input_result=$(lib::_input --header "Enter some text:" --prompt "# " --placeholder "Type here...")
+input_result=$(shew__input --header "Enter some text:" --prompt "# " --placeholder "Type here...")
 echo "You entered: '$input_result'"
 echo
 
 
 # 14. _write
-unit::section "Testing _write (interactive)"
+unit__section "Testing _write (interactive)"
 
 echo "Test _write: please type multiple lines.  Press Enter for new lines and press Escape twice to finish.  The function will echo back your input."
-write_result=$(lib::_write --header "Write something:" --placeholder "Start typing...")
+write_result=$(shew__write --header "Write something:" --placeholder "Start typing...")
 echo "Your multi-line input was:"
 echo "$write_result"
 echo
 
 
 # 15. _filter
-unit::section "Testing _filter (interactive)"
+unit__section "Testing _filter (interactive)"
 
 echo "Test _filter: use arrow keys to navigate and Tab to select/deselect (multi-select).  Press Enter to finish.  Selected values will be printed."
-filter_result=$(lib::_filter --header "Choose fruits:" --prompt "Pick some:" --multi --limit 2 --labels "Apple|1 Banana|2 Cherry|3 Date|4")
+filter_result=$(shew__filter --header "Choose fruits:" --prompt "Pick some:" --multi --limit 2 --labels "Apple|1 Banana|2 Cherry|3 Date|4")
 echo "_filter returned: '$filter_result'"
 echo
 

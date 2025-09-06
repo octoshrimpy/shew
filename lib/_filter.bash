@@ -1,4 +1,4 @@
-#! /usr/bin/env bash
+#!/usr/bin/env bash
 
 # TODO: overflow cleanly.
 # brew list | _filter --multi
@@ -6,10 +6,52 @@
 # _filter: Interactive single/multi-choice selector with header, prompt, fuzzy filtering, and keyboard navigation.
 # flags: --header str, --prompt str, --multi, --strict, --reverse, --limit int, --selected str, --label/--labels str
 # use: _filter --header "Choose your favorite:" --prompt "Pick one:" --multi --limit 3 --label "Apple|a Banana|b Cherry|c"
-lib::_filter() {
+shew__filter() {
+
+    # If running under zsh, emulate bash semantics locally (no global shell changes)
+    if [ -n "${ZSH_VERSION-}" ]; then
+        emulate -L bash
+        setopt ksharrays # make arrays 0-indexed like bash
+    fi
+
+    # --- helpers -------------------------------------------------------------
+
+    # portable lowercase (avoid ${var,,})
+    _shew__lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+
+    # portable "read N chars [with optional timeout]" into named var
+    # usage: _shew__read_n 1 "" key        # read 1 char, no timeout
+    #        _shew__read_n 2 0.01 key2     # read 2 chars, 0.01s timeout
+    _shew__read_n() {
+        local __n="$1" __t="$2" __var="$3" __buf __rc
+        local IFS=
+
+        if [ -n "${ZSH_VERSION-}" ]; then
+            emulate -L bash
+            if [ -n "$__t" ]; then
+                read -rsk "$__n" -t "$__t" __buf
+            else
+                read -rsk "$__n" __buf
+            fi
+            __rc=$?
+        else
+            if [ -n "$__t" ]; then
+                read -rsn"$__n" -t "$__t" __buf
+            else
+                read -rsn"$__n" __buf
+            fi
+            __rc=$?
+        fi
+
+        # Assign the buffer to the named variable
+        printf -v "$__var" '%s' "$__buf"
+        return "$__rc"
+    }
+
+    # --- args & state --------------------------------------------------------
 
     local HEADER="" PROMPT="" MULTI=0 STRICT=0 REVERSE=0 LIMIT=0
-    local -a OPTIONS=() RAW_OPTIONS=() LABELS=() VALUES=() SELECTED_ITEMS=() SELECTED=()
+    typeset -a OPTIONS RAW_OPTIONS LABELS VALUES SELECTED_ITEMS SELECTED
     local SELECTED_STR=""
     local POINTER=">" SELECTABLE="●" UNSELECTABLE="᳃" CHECKED="✔"
     local MAX_LINES=10 # default page height
@@ -46,7 +88,18 @@ lib::_filter() {
             shift 2
             ;;
         --label | --labels)
-            IFS=' ' read -r -a RAW_OPTIONS <<<"$2"
+            # Read space-separated "Label|Value" items into RAW_OPTIONS (zsh/bash compatible)
+            if [ -n "${ZSH_VERSION-}" ]; then
+                IFS=' ' read -rA RAW_OPTIONS <<<"$2"
+            else
+                IFS=' ' read -r -a RAW_OPTIONS <<<"$2"
+            fi
+            # Remove completely empty entries from RAW_OPTIONS
+            TMP=()
+            for item in "${RAW_OPTIONS[@]}"; do
+                [[ -n "$item" ]] && TMP+=("$item")
+            done
+            RAW_OPTIONS=("${TMP[@]}")
             shift 2
             ;;
         --max)
@@ -66,10 +119,16 @@ lib::_filter() {
 
     # if we have no positional OPTIONS and stdin is coming from a pipe, read all of it
     if ((${#OPTIONS[@]} == 0)) && ! tty -s; then
-        mapfile -t OPTIONS
+        if [ -n "${BASH_VERSION-}" ]; then
+            mapfile -t OPTIONS
+        else
+            OPTIONS=()
+            while IFS= read -r __line; do OPTIONS+=("$__line"); done
+        fi
     fi
 
-    lib::__tty_enter
+    shew__tty_enter
+
     if [[ ${#RAW_OPTIONS[@]} -gt 0 ]]; then
         for item in "${RAW_OPTIONS[@]}"; do
             LABELS+=("${item%%|*}")
@@ -78,22 +137,39 @@ lib::_filter() {
         OPTIONS=("${LABELS[@]}")
     fi
 
-    [[ $REVERSE -eq 1 ]] && OPTIONS=("$(printf "%s\n" "${OPTIONS[@]}" | tac)")
-    [[ ${#RAW_OPTIONS[@]} -gt 0 && $REVERSE -eq 1 ]] && VALUES=("$(printf "%s\n" "${VALUES[@]}" | tac)")
+    # Reverse arrays without relying on mapfile/process substitution
+    if [[ $REVERSE -eq 1 ]]; then
+        __rev=()
+        for ((ri = ${#OPTIONS[@]} - 1; ri >= 0; ri--)); do __rev+=("${OPTIONS[ri]}"); done
+        OPTIONS=("${__rev[@]}")
+        if [[ ${#RAW_OPTIONS[@]} -gt 0 ]]; then
+            __rev=()
+            for ((ri = ${#VALUES[@]} - 1; ri >= 0; ri--)); do __rev+=("${VALUES[ri]}"); done
+            VALUES=("${__rev[@]}")
+        fi
+    fi
 
     if [[ -n $SELECTED_STR ]]; then
-        IFS=' ' read -r -a SELECTED_ITEMS <<<"$SELECTED_STR"
+        if [ -n "${ZSH_VERSION-}" ]; then
+            IFS=' ' read -rA SELECTED_ITEMS <<<"$SELECTED_STR"
+        else
+            IFS=' ' read -r -a SELECTED_ITEMS <<<"$SELECTED_STR"
+        fi
     fi
 
     for ((i = 0; i < ${#OPTIONS[@]}; i++)); do
+        opt="${OPTIONS[$i]}"
+        [[ -n "$opt" ]] || continue
         SELECTED[i]=0
-        for sel in "${SELECTED_ITEMS[@]}"; do [[ "${OPTIONS[i]}" == "$sel" ]] && SELECTED[i]=1 && break; done
+        for sel in "${SELECTED_ITEMS[@]}"; do
+            [[ "$opt" == "$sel" ]] && SELECTED[i]=1 && break
+        done
     done
 
     local -a ORIG_OPTIONS=("${OPTIONS[@]}")
     local -a FILTERED=("${ORIG_OPTIONS[@]}")
     local -a FILTERED_IDX=()
-    for i in "${!ORIG_OPTIONS[@]}"; do FILTERED_IDX+=("$i"); done
+    for ((i = 0; i < ${#ORIG_OPTIONS[@]}; i++)); do FILTERED_IDX+=("$i"); done
 
     local FILTER="" FILTER_MODE=0 CURSOR=0 HEADER_LINES=0
     local COUNT_LINE=$((MULTI && LIMIT > 0 ? 1 : 0))
@@ -108,18 +184,14 @@ lib::_filter() {
     # Restore the cursor to the saved position (via ESC[s]), then move it down by N lines.
     # Arguments:
     #   $1  Number of lines to move the cursor down from the saved point.
-    lib::filter::_move_to_line() {
+    shew__filter__move_to_line() {
         printf "\033[u"
         (($1 > 0)) && printf "\033[%dB" "$1"
     }
 
     # _draw_header
-    # Redraw the header area: either the live filter prompt (in filter mode) or the static header text.
-    # In filter mode, shows the current FILTER string (or HEADER if empty) on a single line with inverted colors,
-    # positions the cursor at the end of the filter, and makes it visible.
-    # In normal mode, prints HEADER in cyan, then hides the cursor.
-    lib::filter::_draw_header() {
-        lib::filter::_move_to_line 0
+    shew__filter__draw_header() {
+        shew__filter__move_to_line 0
         printf "\033[2K\r"
         if ((FILTER_MODE)); then
             printf "%b" "${C_B_BLACK}"
@@ -135,36 +207,23 @@ lib::_filter() {
     }
 
     # _draw_count
-    # When in multi-select mode with a LIMIT, display how many items have been picked.
-    # Shows “X/Y selected” on the line immediately below the header, plus a hint
-    # (“/ to filter” or “[enter] to apply, [esc] to cancel”) based on FILTER_MODE.
-    lib::filter::_draw_count() {
+    shew__filter__draw_count() {
         local filter="/ to filter"
-
         if ((FILTER_MODE)); then
             filter=" [enter] to apply, [esc] to cancel"
         fi
         if [[ $MULTI -eq 1 && $LIMIT -gt 0 ]]; then
             local selected_count=0
             for n in "${SELECTED[@]}"; do ((selected_count += n)); done
-            lib::filter::_move_to_line 1
+            shew__filter__move_to_line 1
             printf "\033[2K\r"
             echo -e "${C_ITALIC}${C_B_BLACK}${selected_count}/${LIMIT} selected. $filter${C_NC}"
         fi
     }
 
     # _highlight_match
-    # Print a text string with occurrences of the current filter pattern highlighted.
-    # Performs case-insensitive matching.
-    # If iscursor is true, bolds the whole line and renders the match in cyan;
-    # otherwise only the matched substring is colored and bolded.
-    # Arguments:
-    #   $1  The full text of the option.
-    #   $2  The filter pattern.
-    #   $3  Optional flag (“true”/nonzero) indicating whether this line is the current cursor.
-    lib::filter::_highlight_match() {
+    shew__filter__highlight_match() {
         local text="$1" pat="$2" iscursor="${3:-false}"
-        # If no pattern, just print (bold if iscursor)
         if [[ -z "$pat" ]]; then
             if [[ -n "$iscursor" && "$iscursor" != "0" ]]; then
                 echo -ne "${C_BOLD}${text}${C_UNBOLD}"
@@ -173,22 +232,18 @@ lib::_filter() {
             fi
             return
         fi
-        local lc_text="${text,,}" lc_pat="${pat,,}" idx
+        local lc_text="$(_shew__lc "$text")" lc_pat="$(_shew__lc "$pat")" idx
         idx=$(awk -v a="$lc_text" -v b="$lc_pat" 'BEGIN{print index(a,b)}')
         if ((idx > 0)); then
             local pre="${text:0:$((idx - 1))}"
             local match="${text:$((idx - 1)):$((${#pat}))}"
             local post="${text:$((idx - 1 + ${#pat}))}"
-
             if [[ -n "$iscursor" && "$iscursor" != "0" ]]; then
-                # Bold everything, only match is cyan+bold
                 echo -ne "${C_BOLD}${pre}${C_CYAN}${match}${C_RESET_FG}${C_BOLD}${post}${C_UNBOLD}"
             else
-                # Only match is cyan+bold
                 echo -ne "$pre${C_CYAN}${C_BOLD}$match${C_NC}${C_UNBOLD}$post"
             fi
         else
-            # No match, but if iscursor, bold whole line
             if [[ -n "$iscursor" && "$iscursor" != "0" ]]; then
                 echo -ne "${C_BOLD}${text}${C_UNBOLD}"
             else
@@ -198,19 +253,17 @@ lib::_filter() {
     }
 
     # _fuzzy_filter
-    # Rebuild the FILTERED and FILTERED_IDX arrays based on the current FILTER string.
-    # If FILTER is empty, includes all ORIG_OPTIONS; otherwise includes only those
-    # whose lowercase form contains the lowercase FILTER.
-    # Also ensures CURSOR stays within the new filtered list bounds.
-    lib::filter::_fuzzy_filter() {
+    shew__filter__fuzzy_filter() {
         FILTERED=()
         FILTERED_IDX=()
         if [[ -z "$FILTER" ]]; then
             FILTERED=("${ORIG_OPTIONS[@]}")
-            for i in "${!ORIG_OPTIONS[@]}"; do FILTERED_IDX+=($i); done
+            for ((i = 0; i < ${#ORIG_OPTIONS[@]}; i++)); do FILTERED_IDX+=($i); done
         else
-            for i in "${!ORIG_OPTIONS[@]}"; do
-                [[ "${ORIG_OPTIONS[i],,}" == *"${FILTER,,}"* ]] && {
+            local __f_lc="$(_shew__lc "$FILTER")"
+            for ((i = 0; i < ${#ORIG_OPTIONS[@]}; i++)); do
+                __o_lc="$(_shew__lc "${ORIG_OPTIONS[i]}")"
+                [[ "$__o_lc" == *"$__f_lc"* ]] && {
                     FILTERED+=("${ORIG_OPTIONS[i]}")
                     FILTERED_IDX+=("$i")
                 }
@@ -223,12 +276,7 @@ lib::_filter() {
     }
 
     # _draw_option
-    # Render a single option line in the menu, given its position in the FILTERED array.
-    # Adds a pointer (>) for the cursor line, shows a checkbox or bullet for multi-select,
-    # applies highlighting to the matched substring, and bolds the focused line.
-    # Arguments:
-    #   $1  Index into FILTERED/FILTERED_IDX for which option to draw.
-    lib::filter::_draw_option() {
+    shew__filter__draw_option() {
         local fidx=$1
         local idx="${FILTERED_IDX[$fidx]}"
         local opt="${FILTERED[$fidx]}"
@@ -247,35 +295,30 @@ lib::_filter() {
         if [[ $fidx -eq $CURSOR ]]; then
             printf "\033[2K\r"
             echo -ne "${C_NC}${POINTER} $prefix ${C_BOLD}"
-            lib::filter::_highlight_match "$opt" "$FILTER" "true"
+            shew__filter__highlight_match "$opt" "$FILTER" "true"
             echo -e "${C_UNBOLD}${C_NC}"
         else
             printf "\033[2K\r"
             echo -ne "  $prefix "
-            lib::filter::_highlight_match "$opt" "$FILTER"
+            shew__filter__highlight_match "$opt" "$FILTER"
             echo -e "${C_NC}"
         fi
     }
 
     # _draw_menu
-    # Clear the full menu area then redraw every part of the interface:
-    #   1. The header (_draw_header)
-    #   2. The count line (_draw_count), if in multi-select with a limit
-    #   3. Each filtered option (_draw_option)
-    # Manages cursor visibility depending on whether filter mode is active.
-    lib::filter::_draw_menu() {
+    shew__filter__draw_menu() {
         # clear area
         local total=$((1 + COUNT_LINE + VISIBLE + 1)) # +footer
-        lib::filter::_move_to_line 0
+        shew__filter__move_to_line 0
         for ((i = 0; i < total; i++)); do
             printf "\033[2K\r"
             ((i < total - 1)) && printf "\033[1B"
         done
-        lib::filter::_move_to_line 0
+        shew__filter__move_to_line 0
 
         # header + count
-        lib::filter::_draw_header
-        ((MULTI == 1 && LIMIT > 0)) && lib::filter::_draw_count
+        shew__filter__draw_header
+        ((MULTI == 1 && LIMIT > 0)) && shew__filter__draw_count
 
         # show page window
         local start=$((PAGE * VISIBLE))
@@ -283,13 +326,13 @@ lib::_filter() {
         ((end > ${#FILTERED[@]})) && end=${#FILTERED[@]}
         local y=$((1 + COUNT_LINE))
         for ((fidx = start; fidx < end; fidx++)); do
-            lib::filter::_move_to_line $y
-            lib::filter::_draw_option $fidx
+            shew__filter__move_to_line $y
+            shew__filter__draw_option $fidx
             ((y++))
         done
 
         # footer: page bullets
-        lib::filter::_move_to_line $y
+        shew__filter__move_to_line $y
         for ((p = 0; p < NPAGES; p++)); do
             if ((p == PAGE)); then printf "%s " "$SELECTABLE"; else printf "%s " "$UNSELECTABLE"; fi
         done
@@ -299,23 +342,25 @@ lib::_filter() {
         if ((FILTER_MODE)); then printf "\033[?25h"; else printf "\033[?25l"; fi
     }
 
-    lib::filter::_fuzzy_filter
-    lib::filter::_draw_menu
+    shew__filter__fuzzy_filter
+    shew__filter__draw_menu
 
-    trap 'stty sane; lib::__tty_leave; printf "\033[?25h"; return 130' INT
+    trap 'stty sane; shew__tty_leave; printf "\033[?25h"; return 130' INT
     stty -echo -icanon time 0 min 1
 
-    while IFS= read -rsn1 key; do
+    local key key2 old_PAGE old_CURSOR rel_old rel_new old_line new_line
+    while _shew__read_n 1 "" key; do
         if ((FILTER_MODE)); then
             if [[ $key == $'\x1b' ]]; then
                 # try to read an arrow‐sequence suffix
-                read -rsn2 -t 0.01 key2
+                key2=""
+                _shew__read_n 2 0.01 key2
                 if [[ -z "$key2" ]]; then
                     # plain Esc → cancel filter
                     FILTER=""
                     FILTER_MODE=0
-                    lib::filter::_fuzzy_filter
-                    lib::filter::_draw_menu
+                    shew__filter__fuzzy_filter
+                    shew__filter__draw_menu
                 else
                     # actual CSI: handle arrows
                     case "$key2" in
@@ -324,14 +369,14 @@ lib::_filter() {
                             ((CURSOR--))
                             PAGE=$((CURSOR / VISIBLE))
                         fi
-                        lib::filter::_draw_menu
+                        shew__filter__draw_menu
                         ;;
                     "[B")
                         if ((CURSOR < ${#FILTERED[@]} - 1)); then
                             ((CURSOR++))
                             PAGE=$((CURSOR / VISIBLE))
                         fi
-                        lib::filter::_draw_menu
+                        shew__filter__draw_menu
                         ;;
                     esac
                 fi
@@ -350,30 +395,30 @@ lib::_filter() {
                     else
                         SELECTED[idx]=1
                     fi
-                    lib::filter::_draw_menu
+                    shew__filter__draw_menu
                 fi
                 ;;
             $'\177' | $'\010') # Backspace
                 if [[ -n "$FILTER" ]]; then
                     FILTER="${FILTER:0:-1}"
-                    lib::filter::_fuzzy_filter
-                    lib::filter::_draw_menu
+                    shew__filter__fuzzy_filter
+                    shew__filter__draw_menu
                 fi
                 ;;
-            "") # Enter: leave filter mode
+            "" | $'\r' | $'\n') # Enter: leave filter mode
                 FILTER_MODE=0
-                lib::filter::_draw_menu
+                shew__filter__draw_menu
                 ;;
             $'\x1b') # Esc: leave filter mode
                 FILTER=""
                 FILTER_MODE=0
-                lib::filter::_fuzzy_filter
-                lib::filter::_draw_menu
+                shew__filter__fuzzy_filter
+                shew__filter__draw_menu
                 ;;
             *)
                 FILTER="$FILTER$key"
-                lib::filter::_fuzzy_filter
-                lib::filter::_draw_menu
+                shew__filter__fuzzy_filter
+                shew__filter__draw_menu
                 ;;
             esac
             continue
@@ -381,11 +426,12 @@ lib::_filter() {
 
         if [[ $key == $'\x1b' ]]; then
             # read a CSI sequence (e.g. [A, [B, [C, [D])
-            read -rsn2 -t 0.01 key2
+            key2=""
+            _shew__read_n 2 0.01 key2
             old_PAGE=$PAGE
             old_CURSOR=$CURSOR
             case "$key2" in
-            "[A") # Up arrow: move up
+            "[A") # Up arrow: move up 
                 ((CURSOR > 0)) && ((CURSOR--))
                 ;;
             "[B") # Down arrow: move down
@@ -410,7 +456,7 @@ lib::_filter() {
             PAGE=$((CURSOR / VISIBLE))
             if ((PAGE != old_PAGE)); then
                 # full redraw on page change
-                lib::filter::_draw_menu
+                shew__filter__draw_menu
             else
                 # same page → just repaint the two cursor lines
                 rel_old=$((old_CURSOR % VISIBLE))
@@ -420,12 +466,12 @@ lib::_filter() {
                 new_line=$((rel_new + 1 + COUNT_LINE))
 
                 # redraw old cursor slot without pointer (use absolute index)
-                lib::filter::_move_to_line $old_line
-                lib::filter::_draw_option $old_CURSOR
+                shew__filter__move_to_line $old_line
+                shew__filter__draw_option $old_CURSOR
 
                 # redraw new cursor slot with pointer (use absolute index)
-                lib::filter::_move_to_line $new_line
-                lib::filter::_draw_option $CURSOR
+                shew__filter__move_to_line $new_line
+                shew__filter__draw_option $CURSOR
 
                 # keep cursor hidden in normal mode
                 printf "\033[?25l"
@@ -433,7 +479,7 @@ lib::_filter() {
             continue
         fi
         case "$key" in
-        $'\t'|$' ') # outside filter mode, space can also toggle
+        $'\t' | $' ') # outside filter mode, space can also toggle
             if [[ $MULTI -eq 1 && ${#FILTERED[@]} -gt 0 ]]; then
                 local idx="${FILTERED_IDX[$CURSOR]}"
                 local selected_count=0
@@ -445,14 +491,14 @@ lib::_filter() {
                 else
                     SELECTED[idx]=1
                 fi
-                lib::filter::_draw_menu
+                shew__filter__draw_menu
             fi
             ;;
         "/")
             FILTER_MODE=1
-            lib::filter::_draw_menu
+            shew__filter__draw_menu
             ;;
-        "") # Enter
+        "" | $'\r' | $'\n') # Enter
             stty sane
             printf "\033[u"
             for ((i = 0; i < ${#ORIG_OPTIONS[@]} + COUNT_LINE + 1; i++)); do
@@ -468,7 +514,7 @@ lib::_filter() {
                 done
             fi
             printf "\033[?25h"
-            lib::__tty_leave
+            shew__tty_leave
 
             local out=()
             if [[ $MULTI -eq 1 ]]; then
@@ -477,8 +523,12 @@ lib::_filter() {
                 out=("${FILTERED[$CURSOR]}")
             fi
             if [[ ${#RAW_OPTIONS[@]} -gt 0 && $STRICT -eq 0 ]]; then
-                local final=()
-                for sel in "${out[@]}"; do for j in "${!LABELS[@]}"; do [[ "${LABELS[j]}" == "$sel" ]] && final+=("${VALUES[j]}"); done; done
+                final=()
+                for sel in "${out[@]}"; do
+                    for ((j = 0; j < ${#LABELS[@]}; j++)); do
+                        [[ "${LABELS[j]}" == "$sel" ]] && final+=("${VALUES[j]}")
+                    done
+                done
                 echo "${final[*]}"
             else echo "${out[*]}"; fi
             return 0
@@ -487,7 +537,7 @@ lib::_filter() {
     done
 
     stty sane
-    lib::__tty_leave
+    shew__tty_leave
 
     printf "\033[?25h"
     return 0

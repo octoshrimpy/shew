@@ -1,10 +1,10 @@
-#! /usr/bin/env bash
+#!/usr/bin/env bash
 
 # _input: Single-line interactive input with optional header, prompt, placeholder, value preset, and password masking.
 # flags: --header str, --prompt str, --placeholder str, --value str, --password
 # use: _input --header "Username:" --prompt "> " --placeholder "Enter your username"
-lib::_input() {
-  lib::__tty_enter
+shew__input() {
+  shew__tty_enter
 
   local HEADER="" PROMPT="> " PLACEHOLDER="" VALUE="" PASSWORD=false
 
@@ -111,7 +111,7 @@ lib::_input() {
     printf "\033[1A\r\033[K" # Move up and clear
   fi
 
-  lib::__tty_leave
+  shew__tty_leave
   printf "%s\n" "$INPUT"
 
 }

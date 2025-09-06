@@ -1,10 +1,10 @@
-#! /usr/bin/env bash
+#!/usr/bin/env bash
 
 # _write: Interactive multiline text input with header, placeholder, and cursor navigation.
 # flags: --header str, --placeholder str
 # use: _write --header "Tell me a story:" --placeholder "Once upon a time..."
-lib::_write() {
-  lib::__tty_enter
+shew__write() {
+  shew__tty_enter
 
   local HEADER="" PLACEHOLDER=""
   local -a INPUT_BUF=("")
@@ -16,7 +16,7 @@ lib::_write() {
   local HEADER_LINES=0
 
   # Get terminal height using stty
-  lib::write::_get_term_height() {
+  shew__write__get_term_height() {
     local sz
     sz=$(stty size 2>/dev/null) || sz="24 80"
     TERM_HEIGHT="${sz%% *}"
@@ -48,7 +48,7 @@ lib::_write() {
   [ -n "$HEADER" ] && printf "%b\n" "$HEADER"
 
   # Cursor anchor
-  lib::write::_get_cursor() {
+  shew__write__get_cursor() {
     printf '\033[6n' >/dev/tty
     IFS=';' read -srdR -p "" pos </dev/tty || pos="[1;1"
     local row col
@@ -61,10 +61,10 @@ lib::_write() {
   }
 
   # Move to line relative to anchor, scrolling if needed
-  lib::write::_move_to_line() {
+  shew__write__move_to_line() {
     local line="$1"
     local target_row=$((ANCHOR_ROW + line))
-    lib::write::_get_term_height
+    shew__write__get_term_height
     while ((target_row > TERM_HEIGHT)); do
       printf "\n"
       ANCHOR_ROW=$((ANCHOR_ROW - 1))
@@ -74,9 +74,9 @@ lib::_write() {
   }
 
   # Redraw a single line
-  lib::write::_redraw_line() {
+  shew__write__redraw_line() {
     printf "\033[?25l"
-    lib::write::_move_to_line "$LINE_INDEX"
+    shew__write__move_to_line "$LINE_INDEX"
     printf "\033[1G\033[K%s" "$PROMPT"
     if [ -z "${INPUT_BUF[LINE_INDEX]}" ] && [ "$LINE_INDEX" -eq 0 ] && [ -n "$PLACEHOLDER" ] && [ "${#INPUT_BUF[@]}" -eq 1 ]; then
       printf "%b" "$PLACEHOLDER"
@@ -89,12 +89,12 @@ lib::_write() {
   }
 
   # Redraw lines from index (for newlines, deletes, etc)
-  lib::write::_redraw_lines_from() {
+  shew__write__redraw_lines_from() {
     printf "\033[?25l"
     local idx="$1"
     local i
     for ((i = idx; i < ${#INPUT_BUF[@]}; i++)); do
-      lib::write::_move_to_line "$i"
+      shew__write__move_to_line "$i"
       printf "\033[1G\033[K%s" "$PROMPT"
       if [ -z "${INPUT_BUF[i]}" ] && [ "$i" -eq 0 ] && [ -n "$PLACEHOLDER" ] && [ "${#INPUT_BUF[@]}" -eq 1 ]; then
         printf "%b" "$PLACEHOLDER"
@@ -103,22 +103,22 @@ lib::_write() {
       fi
     done
     for (( ; i <= idx + PAD_LINES; i++)); do
-      lib::write::_move_to_line "$i"
+      shew__write__move_to_line "$i"
       printf "\033[1G\033[K"
     done
-    lib::write::_move_to_line "$LINE_INDEX"
+    shew__write__move_to_line "$LINE_INDEX"
     printf "\033[1G\033[%dC" "$((${#PROMPT} + CURSOR))"
     printf "\033[?25h"
   }
 
-  lib::write::_trim_trailing() {
+  shew__write__trim_trailing() {
     while [ ${#INPUT_BUF[@]} -gt 1 ] && [ -z "${INPUT_BUF[-1]}" ]; do
       unset 'INPUT_BUF[${#INPUT_BUF[@]}-1]'
     done
   }
 
-  lib::write::_get_cursor
-  lib::write::_redraw_line
+  shew__write__get_cursor
+  shew__write__redraw_line
 
   local last_esc_time=0
   while :; do
@@ -132,50 +132,50 @@ lib::_write() {
           if [ "$LINE_INDEX" -gt 0 ]; then
             LINE_INDEX=$((LINE_INDEX - 1))
             [ "$CURSOR" -gt "${#INPUT_BUF[LINE_INDEX]}" ] && CURSOR=${#INPUT_BUF[LINE_INDEX]}
-            lib::write::_redraw_line
+            shew__write__redraw_line
           else
             CURSOR=0
-            lib::write::_redraw_line
+            shew__write__redraw_line
           fi
           ;;
         B) # Down
           if [ "$LINE_INDEX" -lt $((${#INPUT_BUF[@]} - 1)) ]; then
             LINE_INDEX=$((LINE_INDEX + 1))
             [ "$CURSOR" -gt "${#INPUT_BUF[LINE_INDEX]}" ] && CURSOR=${#INPUT_BUF[LINE_INDEX]}
-            lib::write::_redraw_line
+            shew__write__redraw_line
           fi
           ;;
         C) # Right
           if [ "$CURSOR" -lt "${#INPUT_BUF[LINE_INDEX]}" ]; then
             CURSOR=$((CURSOR + 1))
-            lib::write::_redraw_line
+            shew__write__redraw_line
           elif [ "$LINE_INDEX" -lt $((${#INPUT_BUF[@]} - 1)) ]; then
             LINE_INDEX=$((LINE_INDEX + 1))
             CURSOR=0
-            lib::write::_redraw_line
+            shew__write__redraw_line
           else
             # At last line, move to end
             CURSOR=${#INPUT_BUF[LINE_INDEX]}
-            lib::write::_redraw_line
+            shew__write__redraw_line
           fi
           ;;
         D) # Left
           if [ "$CURSOR" -gt 0 ]; then
             CURSOR=$((CURSOR - 1))
-            lib::write::_redraw_line
+            shew__write__redraw_line
           elif [ "$LINE_INDEX" -gt 0 ]; then
             LINE_INDEX=$((LINE_INDEX - 1))
             CURSOR=${#INPUT_BUF[LINE_INDEX]}
-            lib::write::_redraw_line
+            shew__write__redraw_line
           fi
           ;;
         H)
           CURSOR=0
-          lib::write::_redraw_line
+          shew__write__redraw_line
           ;;
         F)
           CURSOR=${#INPUT_BUF[LINE_INDEX]}
-          lib::write::_redraw_line
+          shew__write__redraw_line
           ;;
         esac
         continue
@@ -201,7 +201,7 @@ lib::_write() {
       INPUT_BUF=("${INPUT_BUF[@]:0:$LINE_INDEX}" "$before" "$after" "${INPUT_BUF[@]:$((LINE_INDEX + 1))}")
       LINE_INDEX=$((LINE_INDEX + 1))
       CURSOR=0
-      lib::write::_redraw_lines_from $((LINE_INDEX - 1))
+      shew__write__redraw_lines_from $((LINE_INDEX - 1))
       ;;
     $'\x03') # Ctrl+C aborts
       stty sane
@@ -212,7 +212,7 @@ lib::_write() {
       if [ "$CURSOR" -gt 0 ]; then
         INPUT_BUF[LINE_INDEX]="${INPUT_BUF[LINE_INDEX]:0:CURSOR-1}${INPUT_BUF[LINE_INDEX]:CURSOR}"
         CURSOR=$((CURSOR - 1))
-        lib::write::_redraw_line
+        shew__write__redraw_line
       elif [ "$LINE_INDEX" -gt 0 ]; then
         local len_above=${#INPUT_BUF[LINE_INDEX - 1]}
         INPUT_BUF[LINE_INDEX - 1]+="${INPUT_BUF[LINE_INDEX]}"
@@ -220,16 +220,16 @@ lib::_write() {
         INPUT_BUF=("${INPUT_BUF[@]}")
         LINE_INDEX=$((LINE_INDEX - 1))
         CURSOR=$len_above
-        lib::write::_redraw_lines_from "$LINE_INDEX"
+        shew__write__redraw_lines_from "$LINE_INDEX"
       fi
       ;;
     $'\x01') # Ctrl-A (Home)
       CURSOR=0
-      lib::write::_redraw_line
+      shew__write__redraw_line
       ;;
     $'\x05') # Ctrl-E (End)
       CURSOR=${#INPUT_BUF[LINE_INDEX]}
-      lib::write::_redraw_line
+      shew__write__redraw_line
       ;;
     *)
       [[ "$key" =~ [[:print:]] ]] || continue
@@ -237,7 +237,7 @@ lib::_write() {
       if [ -z "${INPUT_BUF[LINE_INDEX]}" ] && [ "$LINE_INDEX" -eq 0 ] && [ -n "$PLACEHOLDER" ] && [ "${#INPUT_BUF[@]}" -eq 1 ]; then
         INPUT_BUF[LINE_INDEX]="$key"
         CURSOR=1
-        lib::write::_redraw_line
+        shew__write__redraw_line
       else
         if [ "$CURSOR" -eq "${#INPUT_BUF[LINE_INDEX]}" ]; then
           INPUT_BUF[LINE_INDEX]+="$key"
@@ -246,7 +246,7 @@ lib::_write() {
         else
           INPUT_BUF[LINE_INDEX]="${INPUT_BUF[LINE_INDEX]:0:CURSOR}${key}${INPUT_BUF[LINE_INDEX]:CURSOR}"
           CURSOR=$((CURSOR + 1))
-          lib::write::_redraw_line
+          shew__write__redraw_line
         fi
       fi
       ;;
@@ -256,7 +256,7 @@ lib::_write() {
   stty sane
   printf "\033[?25l" # Hide cursor
 
-  lib::write::_trim_trailing
+  shew__write__trim_trailing
 
   # Move to anchor (col 1)
   printf "\033[%d;1H" "$ANCHOR_ROW"
@@ -269,7 +269,7 @@ lib::_write() {
 
   printf "\033[?25h" # Show cursor
 
-  lib::__tty_leave
+  shew__tty_leave
 
   for line in "${INPUT_BUF[@]}"; do
     printf "%s\n" "$line"

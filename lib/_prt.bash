@@ -1,9 +1,9 @@
-#! /usr/bin/env bash
+#!/usr/bin/env bash
 
 # _prt: Print message with prefix, colors, and multiline support.
 # flags: -w warning, -e error, -s replace prefix with spaces
 # use: _prt -w "Check your input"
-lib::_prt() {
+shew__prt() {
 
   local appname="${setappname:-APPNAME}"
   local brcolor="$C_CYAN"
@@ -78,6 +78,6 @@ lib::_prt() {
 
 # _prtty: Same as _prt but always writes to terminal.
 # use: _prtty -e "Critical failure"
-lib::_prtty() {
-  lib::_prt "$@" >/dev/tty
+shew__prtty() {
+  shew__prt "$@" >/dev/tty
 }

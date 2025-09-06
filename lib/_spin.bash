@@ -1,10 +1,10 @@
-#! /usr/bin/env bash
+#!/usr/bin/env bash
 
 # _spin: Animate a spinner while running a command.
 # flags: --title str, --spinner type, --show-output
 # use: _spin --spinner dots --title "Waiting" do_thing
-lib::_spin() {
-  lib::__tty_enter
+shew__spin() {
+  shew__tty_enter
 
   printf "\033[?25l" # hide cursor
   set +m             # disable job control
@@ -45,16 +45,16 @@ lib::_spin() {
   fi
   
   
-  if [[ "$title" == *::* ]]; then
+  if [[ "$title" == *__* ]]; then
     
-    # Extract the last segment after the last '::'
-    last_segment="${title##*::}"
+    # Extract the last segment after the last '__'
+    last_segment="${title##*__}"
 
     # Remove the last segment from the title to get the path base
-    path_base="${title%::*}"
+    path_base="${title%__*}"
 
-    # Replace all '::' with '/' to form a clean path
-    path="${path_base//:://}"
+    # Replace all '__' with '/' to form a clean path
+    path="${path_base//__//}"
 
     # Format the final title
     title="$last_segment${C_CYAN}● ${C_GRAY}${C_ITALIC}$path${C_NC}"
@@ -82,19 +82,19 @@ lib::_spin() {
   esac
 
 
-  lib::spin::on_interrupt() {
+  shew__spin__on_interrupt() {
     spinner_running=false
     kill "$SPINNER_PID" 2>/dev/null
     printf "\r\033[K"
     printf "\033[?25h" # show cursor
     set -m             # restore job control
-    lib::__tty_leave
+    shew__tty_leave
     echo -e "\n${C_RED}✗${C_NC} Interrupted"
     exit 1
   }
 
   # Spinner loop
-  lib::spin::start_spinner() {
+  shew__spin__start_spinner() {
     local title="$1"
     spinner_running=true
     local i=0
@@ -112,22 +112,22 @@ lib::_spin() {
     disown "$SPINNER_PID"
   }
 
-  lib::spin::stop_spinner() {
+  shew__spin__stop_spinner() {
     spinner_running=false
     kill "$SPINNER_PID" 2>/dev/null
     printf "\r\033[K"
   }
 
-  lib::spin::_spin_print() {
+  shew__spin__spin_print() {
     while IFS= read -r line; do
       printf "\r\033[K"
       printf "%b\n" "${C_GRAY}│${C_NC} $line"
     done
   }
 
-  trap lib::spin::on_interrupt SIGINT
+  trap shew__spin__on_interrupt SIGINT
 
-  lib::spin::start_spinner "$title"
+  shew__spin__start_spinner "$title"
 
   if [ "$show_output" = true ]; then
     tmp_fifo=$(mktemp -u)
@@ -159,7 +159,7 @@ lib::_spin() {
     line_count=0
   fi
 
-  lib::spin::stop_spinner
+  shew__spin__stop_spinner
 
   # Done message (with alignment if prior output shown)
   if [ "$line_count" -gt 0 ]; then
@@ -170,5 +170,5 @@ lib::_spin() {
   
   printf "\033[?25h" # show cursor
   set -m             # restore job control
-  lib::__tty_leave
+  shew__tty_leave
 }
